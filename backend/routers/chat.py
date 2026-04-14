@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from services.embedder import embed_query
 import services.vector_store as vs
 from services.llm import get_llm, get_available_models
+from services.langsmith_tracer import RAGTrace
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -48,6 +49,12 @@ def chat_stream(req: ChatRequest):
 
     llm = get_llm(req.provider, req.model)
 
+    # LangSmith 트레이스 시작
+    trace = RAGTrace(question=req.question, provider=req.provider, model=req.model)
+    trace.start()
+    trace.log_retrieval(sources)
+    trace.log_llm_start(system_prompt)
+
     def generate():
         try:
             sources_data = [
@@ -55,17 +62,21 @@ def chat_stream(req: ChatRequest):
                     "filename": s["metadata"]["filename"],
                     "chunk_index": s["metadata"]["chunk_index"],
                     "score": round(s["score"], 3),
+                    "page": s["metadata"].get("page") if s["metadata"].get("page", -1) != -1 else None,
                 }
                 for s in sources
             ]
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources_data}, ensure_ascii=False)}\n\n"
 
             for token in llm.chat_stream(system_prompt, req.question):
+                trace.add_token(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
 
+            trace.finish()
             yield "data: [DONE]\n\n"
 
         except Exception as e:
+            trace.finish(error=str(e))
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 

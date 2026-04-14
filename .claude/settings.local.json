@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://ko.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:조선의%20군주&cmlimit=5&cmtype=page&format=json\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d.get\\('query',{}\\).get\\('categorymembers',[]\\)\\)\\)\")"
+    ]
+  }
+}

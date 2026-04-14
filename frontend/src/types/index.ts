@@ -1,12 +1,17 @@
 export interface Document {
   doc_id: string;
   filename: string;
+  file_type: string;
+  uploaded_at: string;
+  file_size: number;
+  total_chunks: number;
 }
 
 export interface Source {
   filename: string;
   chunk_index: number;
   score: number;
+  page?: number;
 }
 
 export interface Message {

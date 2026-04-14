@@ -6,26 +6,40 @@ from pypdf import PdfReader
 from docx import Document
 
 
-def parse_file(file_path: str) -> str:
+def parse_file(file_path: str) -> tuple[str, list[dict]]:
+    """
+    파일을 파싱해서 (전체 텍스트, 페이지별 메타데이터 리스트) 반환
+    페이지 메타데이터: {"text": str, "page": int}  (페이지 구분이 없으면 page=None)
+    """
     ext = os.path.splitext(file_path)[1].lower()
 
     if ext == ".pdf":
         return _parse_pdf(file_path)
     elif ext == ".txt":
-        return _parse_txt(file_path)
+        text = _parse_txt(file_path)
+        return text, [{"text": text, "page": None}]
     elif ext == ".docx":
-        return _parse_docx(file_path)
+        text = _parse_docx(file_path)
+        return text, [{"text": text, "page": None}]
     elif ext == ".hwp":
-        return _parse_hwp(file_path)
+        text = _parse_hwp(file_path)
+        return text, [{"text": text, "page": None}]
     elif ext == ".hwpx":
-        return _parse_hwpx(file_path)
+        text = _parse_hwpx(file_path)
+        return text, [{"text": text, "page": None}]
     else:
         raise ValueError(f"지원하지 않는 파일 형식입니다: {ext}")
 
 
-def _parse_pdf(file_path: str) -> str:
+def _parse_pdf(file_path: str) -> tuple[str, list[dict]]:
     reader = PdfReader(file_path)
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
+    pages = []
+    for i, page in enumerate(reader.pages):
+        text = page.extract_text() or ""
+        if text.strip():
+            pages.append({"text": text, "page": i + 1})
+    full_text = "\n".join(p["text"] for p in pages)
+    return full_text, pages
 
 
 def _parse_txt(file_path: str) -> str:
@@ -39,13 +53,12 @@ def _parse_docx(file_path: str) -> str:
 
 
 def _parse_hwp(file_path: str) -> str:
-    """HWP 파일에서 텍스트 추출 (OLE 구조 파싱)"""
     import olefile
 
     try:
         ole = olefile.OleFileIO(file_path)
     except Exception:
-        raise ValueError("HWP 파일을 읽을 수 없습니다. 파일이 손상됐거나 암호화된 파일일 수 있습니다.")
+        raise ValueError("HWP 파일을 읽을 수 없습니다.")
 
     texts = []
     section_idx = 0
@@ -56,14 +69,11 @@ def _parse_hwp(file_path: str) -> str:
             break
 
         data = ole.openstream(section_name).read()
-
-        # 압축 해제
         try:
             data = zlib.decompress(data, -15)
         except Exception:
             pass
 
-        # 텍스트 레코드 파싱
         pos = 0
         while pos + 4 <= len(data):
             header = struct.unpack_from("<I", data, pos)[0]
@@ -76,7 +86,7 @@ def _parse_hwp(file_path: str) -> str:
                     size = struct.unpack_from("<I", data, pos)[0]
                     pos += 4
 
-            if tag_id == 67:  # HWPTAG_PARA_TEXT
+            if tag_id == 67:
                 try:
                     text = data[pos : pos + size].decode("utf-16-le", errors="ignore")
                     if text.strip():
@@ -85,65 +95,69 @@ def _parse_hwp(file_path: str) -> str:
                     pass
 
             pos += size
-
         section_idx += 1
 
     if not texts:
         raise ValueError("HWP 파일에서 텍스트를 추출할 수 없습니다.")
-
     return "\n".join(texts)
 
 
 def _parse_hwpx(file_path: str) -> str:
-    """HWPX 파일에서 텍스트 추출 (ZIP + XML 구조)"""
     import xml.etree.ElementTree as ET
 
     texts = []
-
     try:
         with zipfile.ZipFile(file_path, "r") as z:
-            # HWPX는 Contents/section*.xml 에 본문 저장
             section_files = sorted(
                 [f for f in z.namelist() if f.startswith("Contents/section") and f.endswith(".xml")]
             )
-
             for section_file in section_files:
                 xml_data = z.read(section_file).decode("utf-8", errors="ignore")
                 root = ET.fromstring(xml_data)
-
-                # 모든 텍스트 노드 추출
                 for elem in root.iter():
                     if elem.text and elem.text.strip():
                         texts.append(elem.text.strip())
-
     except Exception as e:
         raise ValueError(f"HWPX 파일을 읽을 수 없습니다: {e}")
 
     if not texts:
         raise ValueError("HWPX 파일에서 텍스트를 추출할 수 없습니다.")
-
     return "\n".join(texts)
 
 
-def split_into_chunks(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """텍스트를 일정 크기의 청크로 분할 (overlap으로 문맥 유지)"""
+def split_into_chunks(
+    pages: list[dict], chunk_size: int = 500, overlap: int = 50
+) -> list[dict]:
+    """
+    페이지별 텍스트를 청크로 분할
+    반환: [{"text": str, "page": int|None, "chunk_index": int}]
+    """
     chunks = []
-    start = 0
-    text = text.strip()
+    chunk_index = 0
 
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
+    for page_info in pages:
+        text = page_info["text"].strip()
+        page = page_info["page"]
+        start = 0
 
-        if end < len(text):
-            last_period = max(chunk.rfind("."), chunk.rfind("\n"))
-            if last_period > chunk_size // 2:
-                end = start + last_period + 1
-                chunk = text[start:end]
+        while start < len(text):
+            end = start + chunk_size
+            chunk = text[start:end]
 
-        if chunk.strip():
-            chunks.append(chunk.strip())
+            if end < len(text):
+                last_period = max(chunk.rfind("."), chunk.rfind("\n"))
+                if last_period > chunk_size // 2:
+                    end = start + last_period + 1
+                    chunk = text[start:end]
 
-        start = end - overlap
+            if chunk.strip():
+                chunks.append({
+                    "text": chunk.strip(),
+                    "page": page,
+                    "chunk_index": chunk_index,
+                })
+                chunk_index += 1
+
+            start = end - overlap
 
     return chunks

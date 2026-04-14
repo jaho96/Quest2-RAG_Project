@@ -20,7 +20,9 @@ export default function SourceViewer({ sources }: Props) {
             key={i}
             className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5"
           >
-            {s.filename} · 단락 {s.chunk_index + 1}
+            {s.filename}
+            {s.page != null && ` · ${s.page}p`}
+            {` · 단락 ${s.chunk_index + 1}`}
             <span className="text-blue-400">(관련도 {Math.round(s.score * 100)}%)</span>
           </span>
         ))}
