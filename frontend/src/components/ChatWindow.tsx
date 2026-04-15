@@ -9,16 +9,18 @@ interface Props {
 }
 
 export default function ChatWindow({ messages, loading }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+    <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
+      <div className="px-4 py-4 flex flex-col gap-4">
       {messages.length === 0 && (
-        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+        <div className="flex items-center justify-center text-gray-400 text-sm py-20">
           문서를 업로드하고 질문해보세요.
         </div>
       )}
@@ -72,7 +74,7 @@ export default function ChatWindow({ messages, loading }: Props) {
         </div>
       )}
 
-      <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

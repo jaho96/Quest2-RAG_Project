@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(curl -s \"https://ko.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:조선의%20군주&cmlimit=5&cmtype=page&format=json\")",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d.get\\('query',{}\\).get\\('categorymembers',[]\\)\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d.get\\('query',{}\\).get\\('categorymembers',[]\\)\\)\\)\")",
+      "Read(//mnt/c/Users/jaho3/OneDrive/바탕 화면/it/study/rebootcam/Quest2/RAG_Project-Quest2/**)",
+      "Bash(python -c ':*)",
+      "Bash(python3 -c ':*)",
+      "Bash(npm install:*)"
     ]
   }
 }
