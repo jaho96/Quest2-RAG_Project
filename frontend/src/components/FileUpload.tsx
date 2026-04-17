@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Upload, Trash2, FileText, ChevronDown, ChevronRight, Globe } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Upload, Trash2, FileText, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { Document } from "../types";
 
 interface Props {
@@ -15,7 +15,6 @@ const FILE_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   hwp:  { label: "한글(HWP)", color: "text-teal-500"   },
   hwpx: { label: "한글(HWP)", color: "text-teal-500"   },
   txt:  { label: "텍스트",    color: "text-gray-500"   },
-  wiki: { label: "위키백과",  color: "text-green-500"  },
 };
 
 function getTypeConfig(fileType: string) {
@@ -62,10 +61,7 @@ function Folder({ fileType, docs, onDelete }: FolderProps) {
       >
         <div className="flex items-center gap-2">
           {open ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
-          {fileType === "wiki"
-            ? <Globe size={14} className={config.color} />
-            : <FileText size={14} className={config.color} />
-          }
+          <FileText size={14} className={config.color} />
           <span className="text-xs font-semibold text-gray-600">{config.label}</span>
         </div>
         <span className="text-xs text-gray-400 bg-gray-200 rounded-full px-2 py-0.5">
@@ -111,10 +107,22 @@ function Folder({ fileType, docs, onDelete }: FolderProps) {
   );
 }
 
+const UPLOAD_STEPS = ["파일 파싱 중...", "임베딩 생성 중...", "DB 저장 중..."];
+
 export default function FileUpload({ documents, onUpload, onDelete }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [stepIdx, setStepIdx] = useState(0);
+
+  // 업로드 중 단계 메시지를 순서대로 순환
+  useEffect(() => {
+    if (!uploading) { setStepIdx(0); return; }
+    const timer = setInterval(() => {
+      setStepIdx((i) => (i + 1) % UPLOAD_STEPS.length);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [uploading]);
 
   const handleFile = async (file: File) => {
     setUploading(true);
@@ -148,11 +156,14 @@ export default function FileUpload({ documents, onUpload, onDelete }: Props) {
           dragOver ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-blue-400 hover:bg-gray-50"
         }`}
       >
-        <Upload className="mx-auto mb-1 text-gray-400" size={20} />
+        {uploading
+          ? <Loader2 className="mx-auto mb-1 text-blue-400 animate-spin" size={20} />
+          : <Upload className="mx-auto mb-1 text-gray-400" size={20} />
+        }
         <p className="text-sm text-gray-500">
-          {uploading ? "업로드 중..." : "PDF / TXT / DOCX / HWP"}
+          {uploading ? UPLOAD_STEPS[stepIdx] : "PDF / TXT / DOCX / HWP"}
         </p>
-        <p className="text-xs text-gray-400 mt-0.5">드래그하거나 클릭</p>
+        {!uploading && <p className="text-xs text-gray-400 mt-0.5">드래그하거나 클릭</p>}
         <input
           ref={inputRef}
           type="file"

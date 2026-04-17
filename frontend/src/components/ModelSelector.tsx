@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Zap } from "lucide-react";
 import { MODEL_OPTIONS, ModelOption } from "../types";
 
@@ -19,21 +20,44 @@ const PAID_GROUPS = ["OpenAI", "Claude"];
 
 export default function ModelSelector({ selected, onChange }: Props) {
   const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const insideBtn = ref.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideBtn && !insideDropdown) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.min(384, spaceBelow),
+        zIndex: 9999,
+      });
+    }
+    setOpen((o) => !o);
+  };
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref}>
       {/* 선택된 모델 버튼 */}
       <button
-        onClick={() => setOpen((o) => !o)}
+        ref={btnRef}
+        onClick={handleOpen}
         className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -49,9 +73,9 @@ export default function ModelSelector({ selected, onChange }: Props) {
         <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {/* 드롭다운 패널 */}
-      {open && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+      {/* 드롭다운 패널 — portal로 body에 렌더링 */}
+      {open && createPortal(
+        <div ref={dropdownRef} style={dropdownStyle} className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-y-auto">
           {/* 무료 섹션 */}
           <div className="px-3 pt-2 pb-1">
             <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider flex items-center gap-1">
@@ -87,7 +111,8 @@ export default function ModelSelector({ selected, onChange }: Props) {
             ) : null
           )}
           <div className="h-2" />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

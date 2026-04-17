@@ -6,7 +6,9 @@
       "Read(//mnt/c/Users/jaho3/OneDrive/바탕 화면/it/study/rebootcam/Quest2/RAG_Project-Quest2/**)",
       "Bash(python -c ':*)",
       "Bash(python3 -c ':*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(docker --version)",
+      "Bash(docker run *)"
     ]
   }
 }

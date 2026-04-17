@@ -15,12 +15,12 @@ class ClaudeLLM(BaseLLM):
     def model_name(self) -> str:
         return self._model
 
-    def chat_stream(self, system_prompt: str, user_message: str) -> Generator[str, None, None]:
+    def chat_stream(self, system_prompt: str, messages: list[dict]) -> Generator[str, None, None]:
         with self._client.messages.stream(
             model=self._model,
             max_tokens=2048,
             system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
+            messages=messages,  # user/assistant 배열 그대로 전달
         ) as stream:
             for text in stream.text_stream:
                 yield text

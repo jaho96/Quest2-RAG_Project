@@ -8,12 +8,21 @@ from config import UPLOAD_DIR
 from services.document_parser import parse_file, split_into_chunks
 from services.embedder import embed_texts
 import services.vector_store as vs
+from services.cache import invalidate_responses
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 def _calc_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _cjk_ratio(text: str) -> float:
+    """텍스트 중 한자(CJK) 비율 반환"""
+    if not text:
+        return 0.0
+    cjk = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    return cjk / len(text)
 
 
 @router.post("/upload")
@@ -72,11 +81,22 @@ async def upload_document(file: UploadFile = File(...)):
         os.remove(save_path)
         raise HTTPException(status_code=500, detail=str(e))
 
+    invalidate_responses()  # 문서 추가 시 응답 캐시 초기화
+
+    # 한자 비율이 3% 초과면 경고
+    cjk = _cjk_ratio(full_text)
+    warning = (
+        "PDF 폰트 인코딩 문제로 일부 한글이 한자로 표시될 수 있습니다. "
+        "검색 품질에 영향을 줄 수 있으니 다른 PDF 파일 사용을 권장합니다."
+        if cjk > 0.03 else None
+    )
+
     return {
         "doc_id": doc_id,
         "filename": file.filename,
         "chunks": len(chunks),
         "duplicate": False,
+        "warning": warning,
     }
 
 
@@ -88,4 +108,5 @@ def list_documents():
 @router.delete("/{doc_id}")
 def delete_document(doc_id: str):
     vs.delete_document(doc_id)
+    invalidate_responses()  # 문서 삭제 시 응답 캐시 초기화
     return {"message": "삭제 완료"}

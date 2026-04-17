@@ -15,13 +15,10 @@ class OpenAILLM(BaseLLM):
     def model_name(self) -> str:
         return self._model
 
-    def chat_stream(self, system_prompt: str, user_message: str) -> Generator[str, None, None]:
+    def chat_stream(self, system_prompt: str, messages: list[dict]) -> Generator[str, None, None]:
         stream = self._client.chat.completions.create(
             model=self._model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
+            messages=[{"role": "system", "content": system_prompt}, *messages],
             stream=True,
         )
         for chunk in stream:

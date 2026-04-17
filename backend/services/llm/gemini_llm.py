@@ -16,13 +16,19 @@ class GeminiLLM(BaseLLM):
     def model_name(self) -> str:
         return self._model
 
-    def chat_stream(self, system_prompt: str, user_message: str) -> Generator[str, None, None]:
+    def chat_stream(self, system_prompt: str, messages: list[dict]) -> Generator[str, None, None]:
+        # Gemini는 assistant → model 로 role명이 다름
+        contents = [
+            types.Content(
+                role="user" if m["role"] == "user" else "model",
+                parts=[types.Part(text=m["content"])],
+            )
+            for m in messages
+        ]
         for chunk in self._client.models.generate_content_stream(
             model=self._model,
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-            ),
+            contents=contents,
+            config=types.GenerateContentConfig(system_instruction=system_prompt),
         ):
             if chunk.text:
                 yield chunk.text

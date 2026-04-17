@@ -2,7 +2,7 @@ import os
 import zlib
 import struct
 import zipfile
-from pypdf import PdfReader
+import fitz  # pymupdf
 from docx import Document
 
 
@@ -32,12 +32,13 @@ def parse_file(file_path: str) -> tuple[str, list[dict]]:
 
 
 def _parse_pdf(file_path: str) -> tuple[str, list[dict]]:
-    reader = PdfReader(file_path)
+    doc = fitz.open(file_path)
     pages = []
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text() or ""
+    for i, page in enumerate(doc):
+        text = page.get_text() or ""
         if text.strip():
             pages.append({"text": text, "page": i + 1})
+    doc.close()
     full_text = "\n".join(p["text"] for p in pages)
     return full_text, pages
 
@@ -125,6 +126,9 @@ def _parse_hwpx(file_path: str) -> str:
     return "\n".join(texts)
 
 
+MIN_CHUNK_SIZE = 100  # 이보다 짧은 청크는 버림
+
+
 def split_into_chunks(
     pages: list[dict], chunk_size: int = 500, overlap: int = 50
 ) -> list[dict]:
@@ -150,7 +154,8 @@ def split_into_chunks(
                     end = start + last_period + 1
                     chunk = text[start:end]
 
-            if chunk.strip():
+            # MIN_CHUNK_SIZE 미만은 의미있는 내용이 없으므로 건너뜀
+            if len(chunk.strip()) >= MIN_CHUNK_SIZE:
                 chunks.append({
                     "text": chunk.strip(),
                     "page": page,

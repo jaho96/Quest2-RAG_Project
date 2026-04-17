@@ -1,129 +1,121 @@
-import json
-import os
-import chromadb
-from chromadb.config import Settings
-from config import CHROMA_DIR
+"""
+벡터 저장소 — PostgreSQL + pgvector
+"""
 
-_client = chromadb.PersistentClient(
-    path=CHROMA_DIR,
-    settings=Settings(anonymized_telemetry=False),
-)
-
-# 문서 목록을 빠르게 읽기 위한 레지스트리 파일 (ChromaDB 대신 사용)
-_REGISTRY_PATH = os.path.join(CHROMA_DIR, "document_registry.json")
-
-
-# ── 레지스트리 관리 ────────────────────────────────────────────────
-
-def _load_registry() -> dict:
-    if os.path.exists(_REGISTRY_PATH):
-        with open(_REGISTRY_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def _save_registry(registry: dict):
-    with open(_REGISTRY_PATH, "w", encoding="utf-8") as f:
-        json.dump(registry, f, ensure_ascii=False, indent=2)
-
-
-def _registry_add(doc_id: str, entry: dict):
-    registry = _load_registry()
-    registry[doc_id] = entry
-    _save_registry(registry)
-
-
-def _registry_remove(doc_id: str):
-    registry = _load_registry()
-    registry.pop(doc_id, None)
-    _save_registry(registry)
-
-
-# ── ChromaDB 컬렉션 ───────────────────────────────────────────────
-
-def get_collection(name: str = "documents"):
-    return _client.get_or_create_collection(
-        name=name,
-        metadata={"hnsw:space": "cosine"},
-    )
+import numpy as np
+import psycopg2.extras
+from services.db import get_conn
 
 
 def add_chunks(doc_id: str, filename: str, file_type: str, uploaded_at: str,
                file_size: int, file_hash: str, chunks: list[dict],
                embeddings: list[list[float]], total_chunks: int):
-    collection = get_collection()
-    ids = [f"{doc_id}_{c['chunk_index']}" for c in chunks]
-    metadatas = [
-        {
-            "doc_id": doc_id,
-            "filename": filename,
-            "file_type": file_type,
-            "uploaded_at": uploaded_at,
-            "file_size": file_size,
-            "file_hash": file_hash,
-            "page": c["page"] if c["page"] is not None else -1,
-            "chunk_index": c["chunk_index"],
-            "chunk_size": len(c["text"]),
-            "total_chunks": total_chunks,
-        }
-        for c in chunks
-    ]
-    texts = [c["text"] for c in chunks]
-    collection.add(ids=ids, documents=texts, embeddings=embeddings, metadatas=metadatas)
+    with get_conn() as conn:
+        cur = conn.cursor()
 
-    # 레지스트리에 문서 정보 저장 (목록 조회용)
-    _registry_add(doc_id, {
-        "doc_id": doc_id,
-        "filename": filename,
-        "file_type": file_type,
-        "uploaded_at": uploaded_at,
-        "file_size": file_size,
-        "file_hash": file_hash,
-        "total_chunks": total_chunks,
-    })
+        # 문서 메타데이터 저장
+        cur.execute("""
+            INSERT INTO documents
+              (doc_id, filename, file_type, uploaded_at, file_size, file_hash, total_chunks)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (doc_id) DO NOTHING
+        """, (doc_id, filename, file_type, uploaded_at, file_size, file_hash, total_chunks))
+
+        # 청크 + 임베딩 배치 INSERT (개별 INSERT 대비 대폭 빠름)
+        rows = [
+            (
+                f"{doc_id}_{chunk['chunk_index']}",
+                doc_id, filename, file_type, uploaded_at,
+                chunk.get("page") if chunk.get("page") is not None else -1,
+                chunk["chunk_index"], len(chunk["text"]),
+                total_chunks, chunk["text"],
+                np.array(embedding, dtype=np.float32),
+            )
+            for chunk, embedding in zip(chunks, embeddings)
+        ]
+        psycopg2.extras.execute_values(
+            cur,
+            """
+            INSERT INTO document_chunks
+              (chunk_id, doc_id, filename, file_type, uploaded_at,
+               page, chunk_index, chunk_size, total_chunks, content, embedding)
+            VALUES %s
+            ON CONFLICT (chunk_id) DO NOTHING
+            """,
+            rows,
+            page_size=100,
+        )
 
 
 def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
-    collection = get_collection()
-    if collection.count() == 0:
-        return []
+    """코사인 유사도 기반 벡터 검색"""
+    vec = np.array(query_embedding, dtype=np.float32)
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT chunk_id, doc_id, filename, file_type, uploaded_at,
+                   page, chunk_index, total_chunks, content,
+                   1 - (embedding <=> %s) AS score
+            FROM document_chunks
+            ORDER BY embedding <=> %s
+            LIMIT %s
+        """, (vec, vec, top_k))
+        rows = cur.fetchall()
 
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=min(top_k, collection.count()),
-        include=["documents", "metadatas", "distances"],
-    )
-
-    output = []
-    for i in range(len(results["documents"][0])):
-        similarity = round(1 - results["distances"][0][i] / 2, 3)
-        output.append({
-            "text": results["documents"][0][i],
-            "metadata": results["metadatas"][0][i],
-            "score": similarity,
-        })
-    return output
+    return [
+        {
+            "text": r["content"],
+            "metadata": {
+                "doc_id":       r["doc_id"],
+                "filename":     r["filename"],
+                "file_type":    r["file_type"],
+                "uploaded_at":  r["uploaded_at"],
+                "page":         r["page"],
+                "chunk_index":  r["chunk_index"],
+                "total_chunks": r["total_chunks"],
+            },
+            "score": round(float(r["score"]), 3),
+        }
+        for r in rows
+    ]
 
 
 def get_document_by_hash(file_hash: str) -> dict | None:
-    """동일한 파일이 이미 있는지 해시로 확인 (레지스트리에서 빠르게 조회)"""
-    registry = _load_registry()
-    for entry in registry.values():
-        if entry.get("file_hash") == file_hash:
-            return {"doc_id": entry["doc_id"], "filename": entry["filename"]}
-    return None
+    """중복 파일 확인"""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT doc_id, filename FROM documents WHERE file_hash = %s",
+            (file_hash,)
+        )
+        row = cur.fetchone()
+    return dict(row) if row else None
 
 
 def delete_document(doc_id: str):
-    collection = get_collection()
-    existing = collection.get(where={"doc_id": doc_id})
-    if existing["ids"]:
-        collection.delete(ids=existing["ids"])
-    _registry_remove(doc_id)
+    """문서 삭제 — ON DELETE CASCADE 로 청크도 자동 삭제"""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM documents WHERE doc_id = %s", (doc_id,))
 
 
 def list_documents() -> list[dict]:
-    """레지스트리에서 바로 읽어 반환 (ChromaDB 전체 스캔 없음)"""
-    registry = _load_registry()
-    docs = list(registry.values())
-    return sorted(docs, key=lambda x: x.get("uploaded_at", ""), reverse=True)
+    """문서 목록 (최신순)"""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM documents ORDER BY uploaded_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_chunks_text(doc_ids: list[str]) -> list[str]:
+    """퀴즈 생성용 — 특정 문서들의 청크 텍스트만 반환"""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if doc_ids:
+            cur.execute(
+                "SELECT content FROM document_chunks WHERE doc_id = ANY(%s)",
+                (doc_ids,)
+            )
+        else:
+            cur.execute("SELECT content FROM document_chunks")
+        return [r["content"] for r in cur.fetchall()]

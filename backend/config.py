@@ -19,7 +19,6 @@ os.environ["LANGSMITH_PROJECT"] = LANGSMITH_PROJECT
 os.environ["LANGCHAIN_TRACING_V2"] = LANGSMITH_TRACING
 
 UPLOAD_DIR = "uploads"
-CHROMA_DIR = "chroma_db"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/ragdb")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(CHROMA_DIR, exist_ok=True)

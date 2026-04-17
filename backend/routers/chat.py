@@ -1,4 +1,6 @@
 import json
+import time
+import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -6,8 +8,16 @@ from services.embedder import embed_query
 import services.vector_store as vs
 from services.llm import get_llm, get_available_models
 from services.langsmith_tracer import RAGTrace
+from services.trace_store import save_trace, update_feedback
+from services.cache import get_response, set_response
+import services.history_manager as hm
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+class HistoryMessage(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
 
 
 class ChatRequest(BaseModel):
@@ -15,20 +25,135 @@ class ChatRequest(BaseModel):
     provider: str = "groq"
     model: str = "llama-3.3-70b-versatile"
     top_k: int = 5
+    history: list[HistoryMessage] = []
 
+
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    feedback: int  # 1 = 👍, -1 = 👎
+
+
+# ── 메타 쿼리 감지 ─────────────────────────────────────────────────
+
+META_PATTERNS = {
+    "list_docs": ["어떤 자료", "무슨 자료", "자료 목록", "문서 목록", "어떤 문서",
+                  "무슨 문서", "자료 뭐야", "데이터 뭐야", "가지고 있는 자료",
+                  "가지고 있는 데이터", "자료가 뭐", "문서가 뭐"],
+    "count_docs": ["몇 개", "몇개", "총 몇", "문서 개수", "자료 개수"],
+    "recent_docs": ["최근에 추가", "마지막으로 추가", "최근 문서", "최근 자료"],
+    "topics":     ["어떤 주제", "무슨 주제", "주제 뭐", "어떤 내용을 알아", "뭘 알아"],
+}
+
+
+def detect_meta(question: str) -> str | None:
+    q = question.strip()
+    for meta_type, keywords in META_PATTERNS.items():
+        if any(kw in q for kw in keywords):
+            return meta_type
+    return None
+
+
+def handle_meta(meta_type: str) -> str:
+    docs = vs.list_documents()
+
+    if meta_type == "list_docs":
+        if not docs:
+            return "현재 업로드된 문서가 없습니다."
+        lines = [f"- {d['filename']}" for d in docs]
+        return f"현재 보유 중인 문서 {len(docs)}개입니다:\n" + "\n".join(lines)
+
+    if meta_type == "count_docs":
+        return f"현재 총 {len(docs)}개의 문서가 있습니다."
+
+    if meta_type == "recent_docs":
+        if not docs:
+            return "현재 업로드된 문서가 없습니다."
+        recent = docs[:3]
+        lines = [f"- {d['filename']} ({d['uploaded_at'][:10]})" for d in recent]
+        return "최근 추가된 문서입니다:\n" + "\n".join(lines)
+
+    return "알 수 없는 메타 쿼리입니다."
+
+
+# ── 엔드포인트 ────────────────────────────────────────────────────
 
 @router.get("/models")
 def list_models():
     return get_available_models()
 
 
+@router.post("/feedback")
+def submit_feedback(req: FeedbackRequest):
+    if req.feedback not in (1, -1):
+        raise HTTPException(status_code=400, detail="feedback must be 1 or -1")
+    update_feedback(req.trace_id, req.feedback)
+    return {"ok": True}
+
+
 @router.post("/stream")
 def chat_stream(req: ChatRequest):
-    # 문서가 없으면 바로 오류 반환
     if not vs.list_documents():
         raise HTTPException(status_code=404, detail="문서를 먼저 업로드해주세요.")
 
-    # 관련 문서 검색
+    # ── 메타 쿼리 처리 ───────────────────────────────────────────
+    meta_type = detect_meta(req.question)
+    if meta_type == "topics":
+        # LLM으로 주제 추출
+        import random as _random
+        docs = vs.list_documents()
+        if not docs:
+            answer = "현재 업로드된 문서가 없습니다."
+        else:
+            chunks = vs.get_chunks_text([])  # 전체 문서 청크
+            chunks = [c for c in chunks if len(c.strip()) > 100]
+            sampled = _random.sample(chunks, min(20, len(chunks)))
+            context = "\n\n---\n\n".join(sampled)
+            llm = get_llm(req.provider, req.model)
+            system_prompt = (
+                "당신은 문서 분석 전문가입니다.\n"
+                "아래 문서 내용을 읽고 핵심 주제들을 간결하게 정리해주세요.\n"
+                "주제는 bullet point로 5~10개 이내로 요약하세요."
+            )
+            user_msg = f"[문서 내용]\n{context}\n\n이 문서들의 핵심 주제를 정리해줘."
+
+            def topics_generate():
+                trace_id = str(uuid.uuid4())
+                yield f"data: {json.dumps({'type': 'trace_id', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'sources', 'sources': []}, ensure_ascii=False)}\n\n"
+                for token in llm.chat_stream(system_prompt, [{"role": "user", "content": user_msg}]):
+                    yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(topics_generate(), media_type="text/event-stream")
+
+    if meta_type:
+        answer = handle_meta(meta_type)
+
+        def meta_generate():
+            trace_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'trace_id', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'sources', 'sources': []}, ensure_ascii=False)}\n\n"
+            for ch in answer:
+                yield f"data: {json.dumps({'type': 'token', 'content': ch}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(meta_generate(), media_type="text/event-stream")
+
+    # ── 응답 캐시 확인 ────────────────────────────────────────────
+    cached = get_response(req.question)
+    if cached:
+        def cache_generate():
+            trace_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'trace_id', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'sources', 'sources': cached['sources']}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'cache_hit', 'content': True}, ensure_ascii=False)}\n\n"
+            # 캐시된 답변을 토큰 단위로 스트리밍
+            for word in cached["answer"].split(" "):
+                yield f"data: {json.dumps({'type': 'token', 'content': word + ' '}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(cache_generate(), media_type="text/event-stream")
+
+    # ── RAG 처리 ─────────────────────────────────────────────────
     query_embedding = embed_query(req.question)
     sources = vs.search(query_embedding, top_k=req.top_k)
 
@@ -43,20 +168,33 @@ def chat_stream(req: ChatRequest):
     system_prompt = (
         "당신은 업로드된 문서를 기반으로 질문에 답변하는 AI 어시스턴트입니다.\n"
         "반드시 아래 제공된 문서 내용만을 근거로 답변하세요.\n"
-        "문서에 없는 내용은 '문서에서 찾을 수 없습니다.'라고 답하세요.\n\n"
+        "문서에 없는 내용은 '문서에서 찾을 수 없습니다.'라고 답하세요.\n"
+        "이전 대화 맥락이 있으면 참고하여 자연스럽게 이어서 답변하세요.\n\n"
         f"[참고 문서]\n{context}"
     )
 
     llm = get_llm(req.provider, req.model)
 
-    # LangSmith 트레이스 시작
+    # ── Messages API: 히스토리 + 현재 질문 조합 후 전처리 ──────────
+    all_messages = [
+        {"role": m.role, "content": m.content}
+        for m in req.history
+    ] + [{"role": "user", "content": req.question}]
+    managed_messages = hm.prepare(all_messages, llm)
+
     trace = RAGTrace(question=req.question, provider=req.provider, model=req.model)
     trace.start()
     trace.log_retrieval(sources)
     trace.log_llm_start(system_prompt)
 
+    trace_id = str(uuid.uuid4())
+    start_time = time.time()
+
     def generate():
+        full_answer = ""
         try:
+            yield f"data: {json.dumps({'type': 'trace_id', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+
             sources_data = [
                 {
                     "filename": s["metadata"]["filename"],
@@ -68,15 +206,21 @@ def chat_stream(req: ChatRequest):
             ]
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources_data}, ensure_ascii=False)}\n\n"
 
-            for token in llm.chat_stream(system_prompt, req.question):
+            for token in llm.chat_stream(system_prompt, managed_messages):
                 trace.add_token(token)
+                full_answer += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
 
+            elapsed_ms = int((time.time() - start_time) * 1000)
             trace.finish()
+            save_trace(trace_id, req.question, full_answer, req.provider, req.model, elapsed_ms, sources)
+            set_response(req.question, full_answer, sources_data)
             yield "data: [DONE]\n\n"
 
         except Exception as e:
+            elapsed_ms = int((time.time() - start_time) * 1000)
             trace.finish(error=str(e))
+            save_trace(trace_id, req.question, full_answer or None, req.provider, req.model, elapsed_ms, sources, error=str(e))
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 

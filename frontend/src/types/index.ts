@@ -19,6 +19,15 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  trace_id?: string;
+  feedback?: 1 | -1;
+}
+
+export interface Conversation {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ModelOption {

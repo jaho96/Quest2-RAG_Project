@@ -22,8 +22,6 @@ export default function SourceViewer({ sources }: Props) {
           >
             {s.filename}
             {s.page != null && ` · ${s.page}p`}
-            {` · 단락 ${s.chunk_index + 1}`}
-            <span className="text-blue-400">(관련도 {Math.round(s.score * 100)}%)</span>
           </span>
         ))}
       </div>
