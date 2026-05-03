@@ -9,12 +9,16 @@
 - **문서 업로드 및 임베딩** — PDF, DOCX, TXT, HWP 파일 업로드 후 자동 청킹 및 벡터 임베딩
 - **RAG 채팅** — 업로드된 문서를 기반으로 질문에 답변, 스트리밍 응답
 - **다중 LLM 지원** — Groq(무료), Google Gemini(무료), OpenAI GPT-4o, Claude 선택 가능
-- **대화 히스토리** — 대화 저장·불러오기, 참고 출처 복원
+- **메타 쿼리 처리** — "어떤 문서가 있나요?", "주제를 알려줘", "요약해줘" 등 문서 관련 질문 자동 처리
+- **예시 질문 카드** — 첫 질문을 돕는 클릭 가능한 예시 카드 제공
+- **대화 히스토리** — 대화 저장·불러오기, 참고 출처 복원, 전체 삭제
+- **대화 맥락 관리** — 토큰 기반 히스토리 트리밍으로 긴 대화도 맥락 유지
 - **응답 피드백** — 답변에 👍 / 👎 평가
 - **응답 캐시** — Redis를 통한 동일 질문 즉시 응답
 - **평가 대시보드** — 응답시간·검색 관련도 추이, 만족도 통계
 - **임베딩 품질 분석** — 청크 크기 분포, 짧은 청크 비율 확인
 - **퀴즈 생성** — 업로드된 문서 내용으로 단답형·객관식 퀴즈 자동 생성
+- **RAG 디버깅** — Arize Phoenix를 통한 파이프라인 스팬 추적 및 품질 분석
 
 ---
 
@@ -25,11 +29,12 @@
 |------|------|
 | 프레임워크 | FastAPI |
 | 벡터 DB | PostgreSQL + pgvector |
+| 연결 관리 | psycopg2 ThreadedConnectionPool |
 | 임베딩 | OpenAI text-embedding-3-small |
 | LLM | Groq / Google Gemini / OpenAI / Anthropic Claude |
 | 캐시 | Redis (선택) |
 | 문서 파싱 | PyMuPDF, python-docx, olefile |
-| 모니터링 | LangSmith |
+| 모니터링 | LangSmith, Arize Phoenix |
 
 ### Frontend
 | 항목 | 내용 |
@@ -47,19 +52,14 @@
 
 - Python 3.11+
 - Node.js 18+
-- PostgreSQL 15+ (pgvector 확장 포함)
+- Docker Desktop (PostgreSQL 컨테이너용)
 - Redis (캐시 기능 사용 시, 선택)
 - WSL2 (Windows 환경)
 
-### 1. PostgreSQL + pgvector 설치 (Docker)
+### 1. Docker Desktop 실행 후 PostgreSQL + pgvector 컨테이너 시작
 
 ```bash
-docker run -d \
-  --name pgvector \
-  -e POSTGRES_PASSWORD=password \
-  -e POSTGRES_DB=ragdb \
-  -p 5432:5432 \
-  pgvector/pgvector:pg16
+docker run -d --name pgvector -e POSTGRES_PASSWORD=password -e POSTGRES_DB=ragdb -p 5432:5432 pgvector/pgvector:pg16
 ```
 
 ### 2. Redis 설치 (WSL, 선택)
@@ -89,25 +89,38 @@ ANTHROPIC_API_KEY=your_anthropic_key
 DATABASE_URL=postgresql://postgres:password@localhost:5432/ragdb
 REDIS_URL=redis://localhost:6379
 
-LANGSMITH_API_KEY=your_langsmith_key   # 선택
-LANGSMITH_PROJECT=rag-project          # 선택
+LANGSMITH_API_KEY=your_langsmith_key    # 선택
+LANGSMITH_PROJECT=rag-project           # 선택
+
+PHOENIX_PROJECT=rag-chat                # 선택 (기본값: rag-chat)
+PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces  # 선택
 ```
 
 백엔드 실행:
 
 ```bash
-uvicorn main:app --reload
+fuser -k 8000/tcp; uvicorn main:app --reload
 ```
 
-### 4. 프론트엔드 설정
+### 4. Arize Phoenix 서버 실행 (선택, 별도 터미널)
+
+```bash
+source venv/bin/activate
+python -m phoenix.server.main serve
+```
+
+Phoenix UI: `http://localhost:6006`
+
+### 5. 프론트엔드 설정
 
 ```bash
 cd frontend
 npm install
-npm run dev
+fuser -k 5173/tcp; npm run dev
 ```
 
-브라우저에서 `http://localhost:5173` 접속 (WSL 환경이면 Vite가 출력하는 Network URL 사용)
+브라우저에서 `http://localhost:5173` 접속  
+WSL 환경이면 Vite가 출력하는 Network URL(`172.x.x.x:5173`) 사용
 
 ---
 
@@ -116,41 +129,50 @@ npm run dev
 ```
 RAG_Project/
 ├── backend/
-│   ├── main.py                  # FastAPI 앱 진입점
-│   ├── config.py                # 환경변수 설정
+│   ├── main.py                    # FastAPI 앱 진입점, 라이프사이클 관리
+│   ├── config.py                  # 환경변수 설정
 │   ├── requirements.txt
 │   ├── routers/
-│   │   ├── chat.py              # 채팅 스트리밍, 피드백
-│   │   ├── documents.py         # 문서 업로드·삭제
-│   │   ├── conversations.py     # 대화 히스토리 CRUD
-│   │   ├── evaluate.py          # 평가 통계 API
-│   │   └── quiz.py              # 퀴즈 생성·채점
+│   │   ├── chat.py                # 채팅 스트리밍, 메타 쿼리, 피드백
+│   │   ├── documents.py           # 문서 업로드·삭제, PDF 경고
+│   │   ├── conversations.py       # 대화 히스토리 CRUD
+│   │   ├── evaluate.py            # 응답 품질·임베딩 품질 통계 API
+│   │   └── quiz.py                # 퀴즈 생성·채점
 │   └── services/
-│       ├── db.py                # PostgreSQL 연결 풀, 테이블 초기화
-│       ├── vector_store.py      # pgvector 청크 저장·검색
-│       ├── embedder.py          # OpenAI 임베딩
-│       ├── document_parser.py   # PDF·DOCX·TXT·HWP 파싱
-│       ├── conversation_store.py# 대화 저장소
-│       ├── trace_store.py       # 트레이스 저장소
-│       ├── history_manager.py   # 대화 히스토리 토큰 관리
-│       ├── cache.py             # Redis 캐시
-│       ├── llm.py               # LLM 공통 인터페이스
-│       └── langsmith_tracer.py  # LangSmith 연동
+│       ├── db.py                  # PostgreSQL 연결 풀, 테이블 초기화
+│       ├── vector_store.py        # pgvector 청크 저장·검색
+│       ├── embedder.py            # OpenAI 임베딩 (캐시 연동)
+│       ├── document_parser.py     # PDF·DOCX·TXT·HWP 파싱
+│       ├── conversation_store.py  # 대화·메시지 저장소 (sources 포함)
+│       ├── trace_store.py         # 트레이스 저장소
+│       ├── history_manager.py     # 대화 히스토리 토큰 관리·요약
+│       ├── cache.py               # Redis 캐시 (임베딩·응답)
+│       ├── phoenix_tracer.py      # Arize Phoenix OpenTelemetry 계측
+│       ├── langsmith_tracer.py    # LangSmith 연동
+│       └── llm/
+│           ├── __init__.py        # LLM 팩토리 (get_llm)
+│           ├── base.py            # BaseLLM 인터페이스
+│           ├── openai_llm.py      # OpenAI GPT-4o
+│           ├── groq_llm.py        # Groq Llama
+│           ├── claude_llm.py      # Anthropic Claude
+│           └── gemini_llm.py      # Google Gemini
 └── frontend/
     ├── src/
     │   ├── pages/
-    │   │   ├── ChatPage.tsx     # 채팅 페이지
-    │   │   ├── EvaluatePage.tsx # 평가 페이지
-    │   │   └── QuizPage.tsx     # 퀴즈 페이지
+    │   │   ├── ChatPage.tsx       # 채팅 페이지, 예시 질문 카드
+    │   │   ├── EvaluatePage.tsx   # 평가 페이지 (탭 구조)
+    │   │   └── QuizPage.tsx       # 퀴즈 페이지
     │   ├── components/
-    │   │   ├── Layout.tsx       # 사이드바, 네비게이션
-    │   │   ├── ChatWindow.tsx   # 메시지 목록
-    │   │   ├── FileUpload.tsx   # 문서 업로드
-    │   │   ├── ModelSelector.tsx# LLM 모델 선택
-    │   │   ├── SourceViewer.tsx # 참고 출처 표시
-    │   │   └── evaluate/        # 평가 탭 컴포넌트
-    │   └── types/index.ts       # 공통 타입 정의
-    └── vite.config.ts
+    │   │   ├── Layout.tsx         # 사이드바, 네비게이션, 상태 관리
+    │   │   ├── ChatWindow.tsx     # 메시지 목록, 피드백 버튼
+    │   │   ├── FileUpload.tsx     # 문서 업로드 (드래그·업로드 애니메이션)
+    │   │   ├── ModelSelector.tsx  # LLM 모델 선택 (Portal 드롭다운)
+    │   │   ├── SourceViewer.tsx   # 참고 출처 표시
+    │   │   └── evaluate/
+    │   │       ├── DashboardTab.tsx   # 응답 품질 대시보드
+    │   │       └── EmbeddingTab.tsx   # 임베딩 품질 분석
+    │   └── types/index.ts         # 공통 타입 정의
+    └── vite.config.ts             # Vite 설정 (프록시, strictPort)
 ```
 
 ---
@@ -162,15 +184,37 @@ RAG_Project/
 | POST | `/documents/upload` | 문서 업로드 |
 | GET | `/documents/` | 문서 목록 |
 | DELETE | `/documents/{id}` | 문서 삭제 |
+| GET | `/chat/models` | 사용 가능한 모델 목록 |
 | POST | `/chat/stream` | RAG 채팅 (SSE 스트리밍) |
 | POST | `/chat/feedback` | 답변 피드백 |
 | GET | `/conversations/` | 대화 목록 |
 | POST | `/conversations/` | 대화 생성 |
 | GET | `/conversations/{id}/messages` | 메시지 불러오기 |
-| POST | `/conversations/{id}/messages` | 메시지 저장 |
+| POST | `/conversations/{id}/messages` | 메시지 저장 (sources 포함) |
 | DELETE | `/conversations/{id}` | 대화 삭제 |
 | GET | `/evaluate/stats` | 응답 품질 통계 |
 | GET | `/evaluate/traces` | 트레이스 목록 |
 | GET | `/evaluate/embedding-stats` | 임베딩 품질 통계 |
 | POST | `/quiz/generate` | 퀴즈 생성 |
 | POST | `/quiz/grade` | 퀴즈 채점 |
+
+---
+
+## 매일 실행 순서
+
+1. **Docker Desktop 실행** (PostgreSQL 컨테이너 자동 시작)
+2. **백엔드 실행** (WSL 터미널 1)
+   ```bash
+   cd "/mnt/c/Users/.../backend" && source venv/bin/activate
+   fuser -k 8000/tcp; uvicorn main:app --reload
+   ```
+3. **Phoenix 실행** (WSL 터미널 2, 선택)
+   ```bash
+   source venv/bin/activate
+   python -m phoenix.server.main serve
+   ```
+4. **프론트엔드 실행** (WSL 터미널 3)
+   ```bash
+   cd "/mnt/c/Users/.../frontend"
+   fuser -k 5173/tcp; npm run dev
+   ```

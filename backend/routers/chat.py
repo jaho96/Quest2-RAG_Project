@@ -42,6 +42,7 @@ META_PATTERNS = {
     "count_docs": ["몇 개", "몇개", "총 몇", "문서 개수", "자료 개수"],
     "recent_docs": ["최근에 추가", "마지막으로 추가", "최근 문서", "최근 자료"],
     "topics":     ["어떤 주제", "무슨 주제", "주제 뭐", "어떤 내용을 알아", "뭘 알아"],
+    "summarize":  ["요약", "정리해줘", "내용 알려줘", "전체 내용", "어떤 내용이야"],
 }
 
 
@@ -125,6 +126,34 @@ def chat_stream(req: ChatRequest):
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(topics_generate(), media_type="text/event-stream")
+
+    if meta_type == "summarize":
+        import random as _random
+        docs = vs.list_documents()
+        if not docs:
+            answer = "현재 업로드된 문서가 없습니다."
+        else:
+            chunks = vs.get_chunks_text([])
+            chunks = [c for c in chunks if len(c.strip()) > 100]
+            sampled = _random.sample(chunks, min(30, len(chunks)))
+            context = "\n\n---\n\n".join(sampled)
+            llm = get_llm(req.provider, req.model)
+            system_prompt = (
+                "당신은 문서 요약 전문가입니다.\n"
+                "아래 문서 내용을 읽고 전체 내용을 체계적으로 요약해주세요.\n"
+                "문서가 여러 개면 각 문서별로 나누어 요약하고, 전체 핵심 내용을 마지막에 정리해주세요."
+            )
+            user_msg = f"[문서 내용]\n{context}\n\n문서 전체 내용을 요약해줘."
+
+            def summarize_generate():
+                trace_id = str(uuid.uuid4())
+                yield f"data: {json.dumps({'type': 'trace_id', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'sources', 'sources': []}, ensure_ascii=False)}\n\n"
+                for token in llm.chat_stream(system_prompt, [{"role": "user", "content": user_msg}]):
+                    yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(summarize_generate(), media_type="text/event-stream")
 
     if meta_type:
         answer = handle_meta(meta_type)

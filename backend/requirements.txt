@@ -25,5 +25,12 @@ httpx>=0.28.1
 # Monitoring
 langsmith>=0.2.0
 
+# Arize Phoenix (RAG 디버깅)
+arize-phoenix>=4.0.0
+arize-phoenix-otel>=0.6.0
+openinference-instrumentation-openai>=0.1.0
+openinference-instrumentation-anthropic>=0.1.0
+openinference-instrumentation-groq>=0.1.0
+
 # Utilities
 pydantic==2.9.2

@@ -3,11 +3,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import documents, chat, evaluate, quiz, conversations
 from services.db import init_db
+from services.phoenix_tracer import setup_phoenix
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()   # 서버 시작 시 테이블 생성
+    init_db()
+    setup_phoenix()
     yield
 
 
