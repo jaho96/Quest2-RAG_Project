@@ -6,6 +6,23 @@ import numpy as np
 import psycopg2.extras
 from services.db import get_conn
 
+_STOP_WORDS = {
+    "알려줘", "알려주세요", "설명해줘", "설명해주세요", "얘기해줘", "말해줘",
+    "대해", "관해", "관련해서", "에서", "에서는", "에서의",
+    "무엇", "뭐야", "뭐", "어떤", "어떻게", "왜", "언제", "어디",
+    "이야", "인가", "인지", "인데", "이란", "이라는", "이고", "이에요",
+    "해줘", "해주세요", "해봐", "해봐줘",
+    "좀", "조금", "간단히", "자세히", "쉽게", "간략히",
+    "알고", "싶어", "싶은데", "궁금해", "궁금한데", "궁금합니다",
+    "있나요", "있어", "있어요", "있을까", "될까", "될까요",
+    "이", "가", "을", "를", "의", "에", "와", "과", "로", "으로",
+}
+
+
+def _build_keyword_query(text: str) -> str:
+    words = [w for w in text.strip().split() if w not in _STOP_WORDS and len(w) > 1]
+    return " | ".join(words) if words else ""
+
 
 def add_chunks(doc_id: str, filename: str, file_type: str, uploaded_at: str,
                file_size: int, file_hash: str, chunks: list[dict],
@@ -68,9 +85,8 @@ def search(query_embedding: list[float], query_text: str = "", top_k: int = 5) -
 
         # ── 키워드 검색 (tsvector) ─────────────────────────────────
         keyword_rows = {}
-        if query_text.strip():
-            # 단어 분리 후 OR 검색
-            words = " | ".join(query_text.strip().split())
+        words = _build_keyword_query(query_text) if query_text.strip() else ""
+        if words:
             try:
                 cur.execute("""
                     SELECT chunk_id, doc_id, filename, file_type, uploaded_at,
@@ -81,6 +97,7 @@ def search(query_embedding: list[float], query_text: str = "", top_k: int = 5) -
                     ORDER BY score DESC
                     LIMIT %s
                 """, (words, words, fetch))
+
                 keyword_rows = {r["chunk_id"]: (dict(r), i + 1) for i, r in enumerate(cur.fetchall())}
             except Exception:
                 pass  # 키워드 파싱 실패 시 벡터만 사용

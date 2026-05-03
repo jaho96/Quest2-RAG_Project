@@ -30,6 +30,32 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function CustomTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: { name: string; value: number; fill: string; payload: { total: number } }[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const total = payload[0]?.payload?.total;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-md px-3 py-2 text-xs space-y-1">
+      <p className="font-semibold text-gray-700 mb-1.5 truncate max-w-[200px]">{label}</p>
+      {payload.map((p) => (
+        <div key={p.name} className="flex justify-between gap-6">
+          <span style={{ color: p.fill }}>{p.name}</span>
+          <span className="font-medium text-gray-700">{formatMs(p.value)}</span>
+        </div>
+      ))}
+      {total !== undefined && (
+        <div className="flex justify-between gap-6 border-t border-gray-100 pt-1 mt-1">
+          <span className="font-semibold text-gray-600">총계</span>
+          <span className="font-bold text-gray-800">{formatMs(total)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STAGE_COLORS = {
   parse_ms:  "#fb923c",
   chunk_ms:  "#4ade80",
@@ -60,11 +86,12 @@ export default function UploadTab() {
   useEffect(() => { fetchTraces(); }, [fetchTraces]);
 
   const chartData = [...traces].slice(0, 15).reverse().map((t) => ({
-    name: t.filename.length > 12 ? t.filename.slice(0, 12) + "…" : t.filename,
+    name: t.filename.length > 18 ? t.filename.slice(0, 18) + "…" : t.filename,
     파싱:     t.parse_ms,
     청킹:     t.chunk_ms,
     임베딩:   t.embed_ms,
     "DB 저장": t.db_ms,
+    total:    t.total_ms,
   }));
 
   return (
@@ -95,17 +122,17 @@ export default function UploadTab() {
           {/* 스택 바 차트 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">단계별 소요 시간 — 최근 15개 (ms)</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}ms`} />
-                <Tooltip formatter={(v) => formatMs(Number(v))} />
+            <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 36)}>
+              <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 40, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}ms`} />
+                <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11 }} />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="파싱"     stackId="a" fill={STAGE_COLORS.parse_ms} />
                 <Bar dataKey="청킹"     stackId="a" fill={STAGE_COLORS.chunk_ms} />
                 <Bar dataKey="임베딩"   stackId="a" fill={STAGE_COLORS.embed_ms} />
-                <Bar dataKey="DB 저장"  stackId="a" fill={STAGE_COLORS.db_ms} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="DB 저장"  stackId="a" fill={STAGE_COLORS.db_ms} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

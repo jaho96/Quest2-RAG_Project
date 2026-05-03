@@ -130,7 +130,7 @@ MIN_CHUNK_SIZE = 100  # 이보다 짧은 청크는 버림
 
 
 def split_into_chunks(
-    pages: list[dict], chunk_size: int = 500, overlap: int = 100
+    pages: list[dict], chunk_size: int = 900, overlap: int = 200
 ) -> list[dict]:
     """
     전체 텍스트를 하나로 합친 뒤 청크로 분할 (페이지 경계 오버랩 유지)
@@ -155,9 +155,12 @@ def split_into_chunks(
         end = start + chunk_size
         chunk = full_text[start:end]
 
-        # 문장/단락 경계에서 자르기
+        # 문장/단락 경계에서 자르기 (. ! ? \n 모두 고려)
         if end < len(full_text):
-            last_break = max(chunk.rfind("."), chunk.rfind("\n"))
+            last_break = max(
+                chunk.rfind("."), chunk.rfind("!"),
+                chunk.rfind("?"), chunk.rfind("\n"),
+            )
             if last_break > chunk_size // 2:
                 end = start + last_break + 1
                 chunk = full_text[start:end]

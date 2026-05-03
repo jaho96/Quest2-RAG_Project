@@ -87,7 +87,7 @@ export default function EmbeddingTab() {
           icon={<AlignLeft size={20} />}
           label="평균 청크 크기"
           value={overall ? `${overall.avg_chunk_size}자` : "-"}
-          sub="권장: 300~500자"
+          sub="문서 유형에 따라 다름"
         />
         <StatCard
           icon={<AlertTriangle size={20} />}
@@ -100,7 +100,8 @@ export default function EmbeddingTab() {
       {/* 청크 크기 기준 안내 */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-3 text-xs text-blue-700 space-y-0.5">
         <p className="font-semibold mb-1">청크 품질 기준</p>
-        <p>· 평균 청크 크기 <span className="font-medium">300~500자</span> → 검색 정확도와 문맥 유지의 균형이 좋음</p>
+        <p>· 최적 청크 크기는 <span className="font-medium">문서 유형과 언어에 따라 다름</span> — 일반적인 300~500자 기준은 영어 단문 문서 기준</p>
+        <p>· 한국어 기술 문서(교과서·논문 등)는 <span className="font-medium">700~1000자</span>가 문맥 유지에 더 적합함 (현재 설정: 900자)</p>
         <p>· 짧은 청크 비율 <span className="font-medium">10% 이하</span> → 정상 / 이상이면 문서 파싱 오류 가능성</p>
         <p>· 짧은 청크가 많으면 검색 시 관련도 점수가 낮게 나올 수 있음</p>
       </div>

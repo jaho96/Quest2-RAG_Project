@@ -12,14 +12,10 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
 
 def embed_query(text: str) -> list[float]:
-    # 캐시 확인
     cached = get_embedding(text)
     if cached is not None:
         return cached
 
-    # API 호출
     vector = embed_texts([text])[0]
-
-    # 캐시 저장
     set_embedding(text, vector)
     return vector

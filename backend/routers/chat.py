@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from services.embedder import embed_query
 import services.vector_store as vs
 from services.llm import get_llm, get_available_models
+from services.query_rewriter import rewrite_query
 from services.langsmith_tracer import RAGTrace
 from services.trace_store import save_trace, update_feedback
 from services.cache import get_response, set_response
@@ -24,7 +25,7 @@ class ChatRequest(BaseModel):
     question: str
     provider: str = "groq"
     model: str = "llama-3.3-70b-versatile"
-    top_k: int = 5
+    top_k: int = 7
     history: list[HistoryMessage] = []
 
 
@@ -183,8 +184,9 @@ def chat_stream(req: ChatRequest):
         return StreamingResponse(cache_generate(), media_type="text/event-stream")
 
     # ── RAG 처리 ─────────────────────────────────────────────────
-    query_embedding = embed_query(req.question)
-    sources = vs.search(query_embedding, query_text=req.question, top_k=req.top_k)
+    search_query = rewrite_query(req.question, req.provider, req.model)
+    query_embedding = embed_query(search_query)
+    sources = vs.search(query_embedding, query_text=search_query, top_k=req.top_k)
 
     if not sources:
         raise HTTPException(status_code=404, detail="관련 내용을 문서에서 찾지 못했습니다.")
@@ -196,9 +198,12 @@ def chat_stream(req: ChatRequest):
 
     system_prompt = (
         "당신은 업로드된 문서를 기반으로 질문에 답변하는 AI 어시스턴트입니다.\n"
-        "반드시 아래 제공된 문서 내용만을 근거로 답변하세요.\n"
-        "문서에 없는 내용은 '문서에서 찾을 수 없습니다.'라고 답하세요.\n"
-        "이전 대화 맥락이 있으면 참고하여 자연스럽게 이어서 답변하세요.\n\n"
+        "아래 규칙을 반드시 따르세요:\n"
+        "1. 반드시 제공된 참고 문서 내용만을 근거로 답변하세요.\n"
+        "2. 문서에 없는 내용은 절대 추측하거나 지어내지 말고 '문서에서 찾을 수 없습니다.'라고 답하세요.\n"
+        "3. 답변은 문서의 내용을 충실히 반영하되, 자연스럽고 이해하기 쉽게 서술하세요.\n"
+        "4. 관련 내용이 여러 청크에 나뉘어 있으면 통합하여 완전한 답변을 제공하세요.\n"
+        "5. 이전 대화 맥락이 있으면 참고하여 자연스럽게 이어서 답변하세요.\n\n"
         f"[참고 문서]\n{context}"
     )
 
