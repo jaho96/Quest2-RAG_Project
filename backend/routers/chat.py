@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from services.embedder import embed_query
 import services.vector_store as vs
 from services.llm import get_llm, get_available_models
-from services.query_rewriter import rewrite_query
+from services.query_rewriter import prepare_queries
 from services.langsmith_tracer import RAGTrace
 from services.trace_store import save_trace, update_feedback
 from services.cache import get_response, set_response
@@ -184,9 +184,10 @@ def chat_stream(req: ChatRequest):
         return StreamingResponse(cache_generate(), media_type="text/event-stream")
 
     # ── RAG 처리 ─────────────────────────────────────────────────
-    search_query = rewrite_query(req.question, req.provider, req.model)
-    query_embedding = embed_query(search_query)
-    sources = vs.search(query_embedding, query_text=search_query, top_k=req.top_k)
+    # rewrite(키워드 검색용) + HyDE(벡터 검색용) 병렬 실행
+    keyword_query, hyde_text = prepare_queries(req.question, req.provider, req.model)
+    query_embedding = embed_query(hyde_text)
+    sources = vs.search(query_embedding, query_text=keyword_query, top_k=req.top_k)
 
     if not sources:
         raise HTTPException(status_code=404, detail="관련 내용을 문서에서 찾지 못했습니다.")
