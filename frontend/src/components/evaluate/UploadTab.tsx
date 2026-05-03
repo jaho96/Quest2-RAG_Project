@@ -59,7 +59,7 @@ export default function UploadTab() {
 
   useEffect(() => { fetchTraces(); }, [fetchTraces]);
 
-  const chartData = [...traces].reverse().map((t) => ({
+  const chartData = [...traces].slice(0, 15).reverse().map((t) => ({
     name: t.filename.length > 12 ? t.filename.slice(0, 12) + "…" : t.filename,
     파싱:     t.parse_ms,
     청킹:     t.chunk_ms,
@@ -94,7 +94,7 @@ export default function UploadTab() {
         <>
           {/* 스택 바 차트 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">단계별 소요 시간 (ms)</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">단계별 소요 시간 — 최근 15개 (ms)</h3>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -116,6 +116,7 @@ export default function UploadTab() {
               <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                 <tr>
                   <th className="px-4 py-2 text-left">파일명</th>
+                  <th className="px-3 py-2 text-left">업로드 시간</th>
                   <th className="px-3 py-2 text-right">크기</th>
                   <th className="px-3 py-2 text-right">청크</th>
                   <th className="px-3 py-2 text-right text-orange-400">파싱</th>
@@ -135,6 +136,9 @@ export default function UploadTab() {
                           {t.filename}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-3 py-2 text-left text-gray-400 whitespace-nowrap text-xs">
+                      {t.created_at.slice(0, 16).replace("T", " ")}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500">{formatSize(t.file_size)}</td>
                     <td className="px-3 py-2 text-right text-gray-500">{t.total_chunks}</td>
