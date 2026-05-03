@@ -130,39 +130,48 @@ MIN_CHUNK_SIZE = 100  # 이보다 짧은 청크는 버림
 
 
 def split_into_chunks(
-    pages: list[dict], chunk_size: int = 500, overlap: int = 50
+    pages: list[dict], chunk_size: int = 500, overlap: int = 100
 ) -> list[dict]:
     """
-    페이지별 텍스트를 청크로 분할
+    전체 텍스트를 하나로 합친 뒤 청크로 분할 (페이지 경계 오버랩 유지)
     반환: [{"text": str, "page": int|None, "chunk_index": int}]
     """
-    chunks = []
-    chunk_index = 0
+    # 전체 텍스트와 각 위치의 페이지 번호를 병렬로 관리
+    full_text = ""
+    page_map: list[int | None] = []  # full_text[i]가 속한 페이지
 
     for page_info in pages:
         text = page_info["text"].strip()
         page = page_info["page"]
-        start = 0
+        if text:
+            full_text += text + "\n"
+            page_map.extend([page] * (len(text) + 1))
 
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
+    chunks = []
+    chunk_index = 0
+    start = 0
 
-            if end < len(text):
-                last_period = max(chunk.rfind("."), chunk.rfind("\n"))
-                if last_period > chunk_size // 2:
-                    end = start + last_period + 1
-                    chunk = text[start:end]
+    while start < len(full_text):
+        end = start + chunk_size
+        chunk = full_text[start:end]
 
-            # MIN_CHUNK_SIZE 미만은 의미있는 내용이 없으므로 건너뜀
-            if len(chunk.strip()) >= MIN_CHUNK_SIZE:
-                chunks.append({
-                    "text": chunk.strip(),
-                    "page": page,
-                    "chunk_index": chunk_index,
-                })
-                chunk_index += 1
+        # 문장/단락 경계에서 자르기
+        if end < len(full_text):
+            last_break = max(chunk.rfind("."), chunk.rfind("\n"))
+            if last_break > chunk_size // 2:
+                end = start + last_break + 1
+                chunk = full_text[start:end]
 
-            start = end - overlap
+        if len(chunk.strip()) >= MIN_CHUNK_SIZE:
+            # 청크 시작 위치의 페이지 번호 사용
+            page = page_map[start] if start < len(page_map) else None
+            chunks.append({
+                "text": chunk.strip(),
+                "page": page,
+                "chunk_index": chunk_index,
+            })
+            chunk_index += 1
+
+        start = end - overlap
 
     return chunks

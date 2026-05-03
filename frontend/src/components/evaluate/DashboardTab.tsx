@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { RefreshCw, ThumbsUp, ThumbsDown, Clock, Search, MessageSquare, Zap } from "lucide-react";
+import { RefreshCw, ThumbsUp, ThumbsDown, Clock, Search, MessageSquare, Zap, Trash2 } from "lucide-react";
 
 interface CacheStats {
   connected: boolean;
@@ -67,6 +67,12 @@ export default function DashboardTab() {
     finally { setLoading(false); }
   }, []);
 
+  const handleReset = useCallback(async () => {
+    if (!window.confirm("응답 트레이스 데이터 전체가 삭제됩니다. 정말 삭제하시겠습니까?")) return;
+    await fetch("/evaluate/traces", { method: "DELETE" });
+    await load();
+  }, [load]);
+
   useEffect(() => { load(); }, [load]);
 
   const chartData = [...traces].reverse().map((t, i) => ({
@@ -81,13 +87,20 @@ export default function DashboardTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <button
           onClick={load} disabled={loading}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 bg-white rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           새로고침
+        </button>
+        <button
+          onClick={handleReset}
+          className="flex items-center gap-1.5 text-sm text-red-500 border border-red-200 rounded-lg px-3 py-2 hover:bg-red-50 transition-colors"
+        >
+          <Trash2 size={14} />
+          데이터 초기화
         </button>
       </div>
 

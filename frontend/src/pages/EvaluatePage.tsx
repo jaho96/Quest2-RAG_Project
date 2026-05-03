@@ -1,10 +1,12 @@
 import { useState } from "react";
 import DashboardTab from "../components/evaluate/DashboardTab";
 import EmbeddingTab from "../components/evaluate/EmbeddingTab";
+import UploadTab from "../components/evaluate/UploadTab";
 
 const TABS = [
   { id: "dashboard", label: "응답 품질" },
   { id: "embedding", label: "임베딩 품질" },
+  { id: "upload",    label: "업로드 성능" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -40,6 +42,7 @@ export default function EvaluatePage() {
         {/* 탭 콘텐츠 */}
         {activeTab === "dashboard" && <DashboardTab />}
         {activeTab === "embedding" && <EmbeddingTab />}
+        {activeTab === "upload"    && <UploadTab />}
       </div>
     </div>
   );

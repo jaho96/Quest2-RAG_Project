@@ -47,11 +47,15 @@ def add_chunks(doc_id: str, filename: str, file_type: str, uploaded_at: str,
         )
 
 
-def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
-    """코사인 유사도 기반 벡터 검색"""
+def search(query_embedding: list[float], query_text: str = "", top_k: int = 5) -> list[dict]:
+    """Hybrid Search: 벡터 유사도 + 키워드 검색 결합 (RRF 방식)"""
     vec = np.array(query_embedding, dtype=np.float32)
+    fetch = top_k * 3  # 각 방법에서 더 많이 뽑아서 합산
+
     with get_conn() as conn:
         cur = conn.cursor()
+
+        # ── 벡터 검색 ──────────────────────────────────────────────
         cur.execute("""
             SELECT chunk_id, doc_id, filename, file_type, uploaded_at,
                    page, chunk_index, total_chunks, content,
@@ -59,8 +63,45 @@ def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
             FROM document_chunks
             ORDER BY embedding <=> %s
             LIMIT %s
-        """, (vec, vec, top_k))
-        rows = cur.fetchall()
+        """, (vec, vec, fetch))
+        vector_rows = {r["chunk_id"]: (dict(r), i + 1) for i, r in enumerate(cur.fetchall())}
+
+        # ── 키워드 검색 (tsvector) ─────────────────────────────────
+        keyword_rows = {}
+        if query_text.strip():
+            # 단어 분리 후 OR 검색
+            words = " | ".join(query_text.strip().split())
+            try:
+                cur.execute("""
+                    SELECT chunk_id, doc_id, filename, file_type, uploaded_at,
+                           page, chunk_index, total_chunks, content,
+                           ts_rank(content_tsv, to_tsquery('simple', %s)) AS score
+                    FROM document_chunks
+                    WHERE content_tsv @@ to_tsquery('simple', %s)
+                    ORDER BY score DESC
+                    LIMIT %s
+                """, (words, words, fetch))
+                keyword_rows = {r["chunk_id"]: (dict(r), i + 1) for i, r in enumerate(cur.fetchall())}
+            except Exception:
+                pass  # 키워드 파싱 실패 시 벡터만 사용
+
+    # ── RRF (Reciprocal Rank Fusion) 점수 합산 ─────────────────────
+    k = 60  # RRF 상수
+    all_ids = set(vector_rows) | set(keyword_rows)
+    scored = []
+    for cid in all_ids:
+        rrf = 0.0
+        row_data = None
+        if cid in vector_rows:
+            row_data, rank = vector_rows[cid]
+            rrf += 1 / (k + rank)
+        if cid in keyword_rows:
+            row_data, rank = keyword_rows[cid]
+            rrf += 1 / (k + rank)
+        if row_data:
+            scored.append((rrf, row_data))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
 
     return [
         {
@@ -74,9 +115,9 @@ def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
                 "chunk_index":  r["chunk_index"],
                 "total_chunks": r["total_chunks"],
             },
-            "score": round(float(r["score"]), 3),
+            "score": round(float(vector_rows[r["chunk_id"]][0]["score"]) if r["chunk_id"] in vector_rows else 0.0, 3),
         }
-        for r in rows
+        for _, r in scored[:top_k]
     ]
 
 

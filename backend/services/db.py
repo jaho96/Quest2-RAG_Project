@@ -92,11 +92,21 @@ def init_db():
                 chunk_size   INTEGER,
                 total_chunks INTEGER,
                 content      TEXT NOT NULL,
-                embedding    vector(1536)
+                embedding    vector(1536),
+                content_tsv  TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED
             )
+        """)
+        # 기존 테이블 마이그레이션 (인덱스 생성 전에 먼저 실행)
+        cur.execute("""
+            ALTER TABLE document_chunks
+            ADD COLUMN IF NOT EXISTS content_tsv TSVECTOR
+            GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED
         """)
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON document_chunks(doc_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON document_chunks USING GIN(content_tsv)"
         )
 
         # ── 트레이스 ─────────────────────────────────────────────
@@ -144,4 +154,22 @@ def init_db():
         cur.execute("""
             ALTER TABLE conv_messages
             ADD COLUMN IF NOT EXISTS sources JSONB
+        """)
+
+        # ── 업로드 성능 트레이스 ──────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS upload_traces (
+                id           SERIAL PRIMARY KEY,
+                doc_id       TEXT NOT NULL,
+                filename     TEXT NOT NULL,
+                file_type    TEXT,
+                file_size    INTEGER,
+                total_chunks INTEGER,
+                parse_ms     INTEGER,
+                chunk_ms     INTEGER,
+                embed_ms     INTEGER,
+                db_ms        INTEGER,
+                total_ms     INTEGER,
+                created_at   TIMESTAMPTZ DEFAULT NOW()
+            )
         """)

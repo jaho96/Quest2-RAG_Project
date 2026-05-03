@@ -1,6 +1,7 @@
 import os
 import uuid
 import hashlib
+import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
@@ -9,6 +10,7 @@ from services.document_parser import parse_file, split_into_chunks
 from services.embedder import embed_texts
 import services.vector_store as vs
 from services.cache import invalidate_responses
+from services.db import get_conn
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -53,15 +55,25 @@ async def upload_document(file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         f.write(file_data)
 
+    success = False
+    parse_ms = chunk_ms = embed_ms = db_ms = 0
     try:
+        t = time.perf_counter()
         full_text, pages = parse_file(save_path)
+        parse_ms = int((time.perf_counter() - t) * 1000)
         if not full_text.strip():
             raise HTTPException(status_code=400, detail="문서에서 텍스트를 추출할 수 없습니다.")
 
+        t = time.perf_counter()
         chunks = split_into_chunks(pages)
+        chunk_ms = int((time.perf_counter() - t) * 1000)
+
+        t = time.perf_counter()
         texts = [c["text"] for c in chunks]
         embeddings = embed_texts(texts)
+        embed_ms = int((time.perf_counter() - t) * 1000)
 
+        t = time.perf_counter()
         vs.add_chunks(
             doc_id=doc_id,
             filename=file.filename,
@@ -73,13 +85,27 @@ async def upload_document(file: UploadFile = File(...)):
             embeddings=embeddings,
             total_chunks=len(chunks),
         )
+        db_ms = int((time.perf_counter() - t) * 1000)
+        success = True
 
     except HTTPException:
-        os.remove(save_path)
         raise
     except Exception as e:
-        os.remove(save_path)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if not success and os.path.exists(save_path):
+            os.remove(save_path)
+
+    total_ms = parse_ms + chunk_ms + embed_ms + db_ms
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO upload_traces
+                (doc_id, filename, file_type, file_size, total_chunks,
+                 parse_ms, chunk_ms, embed_ms, db_ms, total_ms)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (doc_id, file.filename, file_type, file_size, len(chunks),
+              parse_ms, chunk_ms, embed_ms, db_ms, total_ms))
 
     invalidate_responses()  # 문서 추가 시 응답 캐시 초기화
 
@@ -103,6 +129,15 @@ async def upload_document(file: UploadFile = File(...)):
 @router.get("/")
 def list_documents():
     return vs.list_documents()
+
+
+@router.delete("/")
+def delete_all_documents():
+    doc_ids = [d["doc_id"] for d in vs.list_documents()]
+    for doc_id in doc_ids:
+        vs.delete_document(doc_id)
+    invalidate_responses()
+    return {"deleted": len(doc_ids)}
 
 
 @router.delete("/{doc_id}")

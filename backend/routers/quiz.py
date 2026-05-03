@@ -79,7 +79,7 @@ async def generate_quiz(req: GenerateRequest):
     multi_count = req.count - short_count
 
     system_prompt = (
-        "당신은 한국사 교육용 퀴즈를 만드는 전문가입니다.\n"
+        "당신은 문서 기반 퀴즈를 만드는 전문가입니다.\n"
         "아래 문서 내용을 바탕으로 퀴즈를 만들어 주세요.\n"
         "반드시 문서에 있는 내용만 사용하세요.\n\n"
         "출력 형식: JSON 배열만 출력하세요. 다른 텍스트는 절대 포함하지 마세요.\n\n"
@@ -122,7 +122,7 @@ async def generate_quiz(req: GenerateRequest):
 async def grade_answer(req: GradeRequest):
     """단답형 답변 채점 — LLM이 의미 기반으로 평가"""
     system_prompt = (
-        "당신은 한국사 퀴즈 채점관입니다.\n"
+        "당신은 퀴즈 채점관입니다.\n"
         "사용자의 답변이 정답과 의미상 일치하는지 판단하세요.\n"
         "완전히 같지 않아도 핵심 내용이 맞으면 정답으로 처리하세요.\n\n"
         "반드시 JSON만 출력하세요: {\"correct\": true/false, \"feedback\": \"짧은 해설\"}"

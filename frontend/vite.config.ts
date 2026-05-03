@@ -10,9 +10,7 @@ export default defineConfig({
     proxy: {
       "/documents": "http://127.0.0.1:8000",
       "/chat": "http://127.0.0.1:8000",
-      "/evaluate/stats":   "http://127.0.0.1:8000",
-      "/evaluate/traces":  "http://127.0.0.1:8000",
-      "/evaluate/embedding-stats": "http://127.0.0.1:8000",
+      "/evaluate": "http://127.0.0.1:8000",
       "/quiz": "http://127.0.0.1:8000",
       "/conversations": "http://127.0.0.1:8000",
       "/health": "http://127.0.0.1:8000",

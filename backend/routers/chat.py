@@ -184,7 +184,7 @@ def chat_stream(req: ChatRequest):
 
     # ── RAG 처리 ─────────────────────────────────────────────────
     query_embedding = embed_query(req.question)
-    sources = vs.search(query_embedding, top_k=req.top_k)
+    sources = vs.search(query_embedding, query_text=req.question, top_k=req.top_k)
 
     if not sources:
         raise HTTPException(status_code=404, detail="관련 내용을 문서에서 찾지 못했습니다.")

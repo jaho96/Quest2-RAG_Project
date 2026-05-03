@@ -108,12 +108,14 @@ function Folder({ fileType, docs, onDelete }: FolderProps) {
 }
 
 const UPLOAD_STEPS = ["파일 파싱 중...", "임베딩 생성 중...", "DB 저장 중..."];
+const ACCEPTED_EXTS = [".pdf", ".txt", ".docx", ".hwp", ".hwpx"];
 
 export default function FileUpload({ documents, onUpload, onDelete }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
   // 업로드 중 단계 메시지를 순서대로 순환
   useEffect(() => {
@@ -124,20 +126,35 @@ export default function FileUpload({ documents, onUpload, onDelete }: Props) {
     return () => clearInterval(timer);
   }, [uploading]);
 
-  const handleFile = async (file: File) => {
+  const handleFiles = async (files: File[]) => {
+    const valid = files.filter((f) =>
+      ACCEPTED_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
+    );
+    if (valid.length === 0) {
+      alert("지원하지 않는 파일 형식입니다. PDF, TXT, DOCX, HWP, HWPX만 가능합니다.");
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress({ current: 0, total: valid.length });
     try {
-      await onUpload(file);
+      for (let i = 0; i < valid.length; i++) {
+        setUploadProgress({ current: i + 1, total: valid.length });
+        await onUpload(valid[i]);
+      }
+    } catch (e) {
+      alert(`업로드 오류: ${e instanceof Error ? e.message : "서버에 연결할 수 없습니다."}`);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) handleFiles(files);
   };
 
   const grouped = groupByType(documents);
@@ -151,7 +168,7 @@ export default function FileUpload({ documents, onUpload, onDelete }: Props) {
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => { if (!uploading) inputRef.current?.click(); }}
         className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
           dragOver ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-blue-400 hover:bg-gray-50"
         }`}
@@ -161,17 +178,22 @@ export default function FileUpload({ documents, onUpload, onDelete }: Props) {
           : <Upload className="mx-auto mb-1 text-gray-400" size={20} />
         }
         <p className="text-sm text-gray-500">
-          {uploading ? UPLOAD_STEPS[stepIdx] : "PDF / TXT / DOCX / HWP"}
+          {uploading
+            ? uploadProgress && uploadProgress.total > 1
+              ? `${uploadProgress.current}/${uploadProgress.total} ${UPLOAD_STEPS[stepIdx]}`
+              : UPLOAD_STEPS[stepIdx]
+            : "PDF / TXT / DOCX / HWP"}
         </p>
-        {!uploading && <p className="text-xs text-gray-400 mt-0.5">드래그하거나 클릭</p>}
+        {!uploading && <p className="text-xs text-gray-400 mt-0.5">드래그하거나 클릭 (다중 선택 가능)</p>}
         <input
           ref={inputRef}
           type="file"
           accept=".pdf,.txt,.docx,.hwp,.hwpx"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) handleFiles(files);
             e.target.value = "";
           }}
         />

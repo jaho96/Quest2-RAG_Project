@@ -16,6 +16,37 @@ def traces(limit: int = 50):
     return get_traces(limit)
 
 
+@router.delete("/traces")
+def delete_traces():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM traces")
+    return {"deleted": True}
+
+
+@router.delete("/upload-traces")
+def delete_upload_traces():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM upload_traces")
+    return {"deleted": True}
+
+
+@router.get("/upload-traces")
+def upload_traces(limit: int = 50):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, filename, file_type, file_size, total_chunks,
+                   parse_ms, chunk_ms, embed_ms, db_ms, total_ms,
+                   created_at
+            FROM upload_traces
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+
 @router.get("/embedding-stats")
 def embedding_stats():
     with get_conn() as conn:

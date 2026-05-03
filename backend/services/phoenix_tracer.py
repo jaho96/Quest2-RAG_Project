@@ -31,6 +31,13 @@ def setup_phoenix():
         AnthropicInstrumentor().instrument(tracer_provider=tracer_provider)
         GroqInstrumentor().instrument(tracer_provider=tracer_provider)
 
+        # Gemini는 패키지가 없을 수 있으므로 선택적으로 계측
+        try:
+            from openinference.instrumentation.google_genai import GoogleGenAIInstrumentor
+            GoogleGenAIInstrumentor().instrument(tracer_provider=tracer_provider)
+        except ImportError:
+            pass
+
         print(f"[Phoenix] 트레이싱 시작 → http://localhost:6006")
 
     except Exception as e:
