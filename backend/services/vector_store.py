@@ -104,6 +104,7 @@ def search(query_embedding: list[float], query_text: str = "", top_k: int = 5) -
 
     # ── RRF (Reciprocal Rank Fusion) 점수 합산 ─────────────────────
     k = 60  # RRF 상수
+    max_rrf = 2 / (k + 1)  # 양쪽 모두 1위일 때 최댓값
     all_ids = set(vector_rows) | set(keyword_rows)
     scored = []
     for cid in all_ids:
@@ -132,9 +133,10 @@ def search(query_embedding: list[float], query_text: str = "", top_k: int = 5) -
                 "chunk_index":  r["chunk_index"],
                 "total_chunks": r["total_chunks"],
             },
-            "score": round(float(vector_rows[r["chunk_id"]][0]["score"]) if r["chunk_id"] in vector_rows else 0.0, 3),
+            # RRF 점수를 0~1로 정규화 — 벡터+키워드 양쪽 1위면 1.0
+            "score": round(min(rrf / max_rrf, 1.0), 3),
         }
-        for _, r in scored[:top_k]
+        for rrf, r in scored[:top_k]
     ]
 
 

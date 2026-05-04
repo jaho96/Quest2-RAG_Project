@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { RefreshCw, ThumbsUp, ThumbsDown, Clock, Search, MessageSquare, Zap, Trash2 } from "lucide-react";
+import { RefreshCw, ThumbsUp, ThumbsDown, Clock, Search, MessageSquare, Zap, Trash2, BookOpen } from "lucide-react";
 
 interface CacheStats {
   connected: boolean;
@@ -16,6 +16,7 @@ interface Stats {
   total: number;
   avg_response_time_ms: number | null;
   avg_retrieval_score: number | null;
+  avg_readability_score: number | null;
   thumbs_up: number;
   thumbs_down: number;
   cache?: CacheStats;
@@ -29,6 +30,7 @@ interface Trace {
   model: string;
   response_time_ms: number | null;
   avg_retrieval_score: number | null;
+  readability_score: number | null;
   feedback: number | null;
   error: string | null;
   created_at: string;
@@ -79,6 +81,7 @@ export default function DashboardTab() {
     idx: i + 1,
     rt: t.response_time_ms ?? null,
     score: t.avg_retrieval_score != null ? Math.round(t.avg_retrieval_score * 1000) / 10 : null,
+    readability: t.readability_score ?? null,
   }));
 
   const feedbackTotal = (stats?.thumbs_up ?? 0) + (stats?.thumbs_down ?? 0);
@@ -104,11 +107,19 @@ export default function DashboardTab() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <StatCard icon={<MessageSquare size={20} />} label="총 질문 수" value={stats ? String(stats.total) : "-"} />
         <StatCard icon={<Clock size={20} />} label="평균 응답시간" value={stats?.avg_response_time_ms != null ? `${stats.avg_response_time_ms}ms` : "-"} />
         <StatCard icon={<Search size={20} />} label="평균 검색 관련도"
           value={stats?.avg_retrieval_score != null ? `${Math.round(stats.avg_retrieval_score * 1000) / 10}%` : "-"} />
+        <StatCard icon={<BookOpen size={20} />} label="평균 가독성 점수"
+          value={stats?.avg_readability_score != null ? `${stats.avg_readability_score.toFixed(1)} / 5` : "-"}
+          sub="LLM 자동 평가"
+          color={stats?.avg_readability_score != null
+            ? stats.avg_readability_score >= 4 ? "text-green-600"
+            : stats.avg_readability_score >= 3 ? "text-yellow-500"
+            : "text-red-500"
+            : "text-gray-800"} />
         <StatCard icon={<ThumbsUp size={20} />} label="만족도"
           value={satisfactionRate != null ? `${satisfactionRate}%` : "-"}
           sub={feedbackTotal > 0 ? `👍 ${stats!.thumbs_up}  👎 ${stats!.thumbs_down}` : undefined}
@@ -121,7 +132,7 @@ export default function DashboardTab() {
       </div>
 
       {chartData.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <p className="text-sm font-semibold text-gray-700 mb-4">응답시간 추이 (ms)</p>
             <ResponsiveContainer width="100%" height={180}>
@@ -151,6 +162,21 @@ export default function DashboardTab() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <p className="text-sm font-semibold text-gray-700 mb-4">가독성 점수 추이 (1~5)</p>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="idx" tick={{ fontSize: 11 }} />
+                <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => [`${v}점`, "가독성"]} />
+                <ReferenceLine y={3} stroke="#94a3b8" strokeDasharray="4 4"
+                  label={{ value: "기준", fontSize: 11, fill: "#94a3b8" }} />
+                <Line type="monotone" dataKey="readability" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
 
@@ -172,6 +198,7 @@ export default function DashboardTab() {
                   <th className="text-left px-4 py-3 font-medium">모델</th>
                   <th className="text-right px-4 py-3 font-medium">응답시간</th>
                   <th className="text-right px-4 py-3 font-medium">관련도</th>
+                  <th className="text-right px-4 py-3 font-medium">가독성</th>
                   <th className="text-center px-4 py-3 font-medium">피드백</th>
                   <th className="text-center px-4 py-3 font-medium">상태</th>
                 </tr>
@@ -189,6 +216,17 @@ export default function DashboardTab() {
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
                       {t.avg_retrieval_score != null ? `${Math.round(t.avg_retrieval_score * 1000) / 10}%` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {t.readability_score != null ? (
+                        <span className={
+                          t.readability_score >= 4 ? "text-green-500 font-medium"
+                          : t.readability_score >= 3 ? "text-yellow-500 font-medium"
+                          : "text-red-500 font-medium"
+                        }>
+                          {t.readability_score.toFixed(1)}점
+                        </span>
+                      ) : <span className="text-gray-300">-</span>}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {t.feedback === 1 ? <ThumbsUp size={13} className="inline text-blue-500" /> :

@@ -141,7 +141,13 @@ export default function ChatPage() {
           if (raw === "[DONE]") break;
           const data = JSON.parse(raw);
 
-          if (data.type === "trace_id") {
+          if (data.type === "status" && data.content === "searching") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, content: "문서를 검색하고 있습니다..." } : m
+              )
+            );
+          } else if (data.type === "trace_id") {
             traceId = data.trace_id;
             setMessages((prev) =>
               prev.map((m) => (m.id === assistantId ? { ...m, trace_id: traceId } : m))

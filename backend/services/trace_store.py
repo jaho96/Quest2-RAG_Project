@@ -30,6 +30,15 @@ def save_trace(trace_id: str, question: str, answer: str | None,
         ))
 
 
+def save_readability_score(trace_id: str, score: float):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE traces SET readability_score = %s WHERE trace_id = %s",
+            (score, trace_id)
+        )
+
+
 def update_feedback(trace_id: str, feedback: int):
     with get_conn() as conn:
         cur = conn.cursor()
@@ -74,11 +83,16 @@ def get_stats() -> dict:
         thumbs_up = cur.fetchone()["c"]
         cur.execute("SELECT COUNT(*) AS c FROM traces WHERE feedback = -1")
         thumbs_down = cur.fetchone()["c"]
+        cur.execute(
+            "SELECT AVG(readability_score) AS a FROM traces WHERE readability_score IS NOT NULL"
+        )
+        avg_readability = cur.fetchone()["a"]
 
     return {
         "total": total,
-        "avg_response_time_ms":  round(avg_rt) if avg_rt else None,
-        "avg_retrieval_score":   round(float(avg_score), 3) if avg_score else None,
+        "avg_response_time_ms":   round(avg_rt) if avg_rt else None,
+        "avg_retrieval_score":    round(float(avg_score), 3) if avg_score else None,
+        "avg_readability_score":  round(float(avg_readability), 2) if avg_readability else None,
         "thumbs_up":   thumbs_up,
         "thumbs_down": thumbs_down,
     }

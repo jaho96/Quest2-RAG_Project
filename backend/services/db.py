@@ -121,10 +121,15 @@ def init_db():
                 response_time_ms     INTEGER,
                 retrieval_scores     JSONB,
                 avg_retrieval_score  REAL,
+                readability_score    REAL,
                 feedback             INTEGER,
                 error                TEXT,
                 created_at           TIMESTAMPTZ DEFAULT NOW()
             )
+        """)
+        cur.execute("""
+            ALTER TABLE traces
+            ADD COLUMN IF NOT EXISTS readability_score REAL
         """)
 
         # ── 대화 목록 ─────────────────────────────────────────────
