@@ -63,12 +63,12 @@ export default function ChatWindow({ messages, loading, onFeedback, suggestions,
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                      h1: ({ children }) => <h1 className="text-base font-bold mt-3 mb-1">{children}</h1>,
-                      h2: ({ children }) => <h2 className="text-sm font-bold mt-3 mb-1">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
-                      ul: ({ children }) => <ul className="list-disc list-outside pl-4 mb-2 space-y-0.5">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal list-outside pl-4 mb-2 space-y-0.5">{children}</ol>,
+                      p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>,
+                      h1: ({ children }) => <h1 className="text-xl font-bold mt-6 mb-3 first:mt-0">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-lg font-bold mt-5 mb-2 first:mt-0">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-base font-semibold mt-4 mb-2 first:mt-0">{children}</h3>,
+                      ul: ({ children }) => <ul className="list-disc list-outside pl-5 mb-4 space-y-1.5">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal list-outside pl-5 mb-4 space-y-1.5">{children}</ol>,
                       li: ({ children }) => <li className="leading-relaxed">{children}</li>,
                       strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                       em: ({ children }) => <em className="italic">{children}</em>,
@@ -79,23 +79,23 @@ export default function ChatWindow({ messages, loading, onFeedback, suggestions,
                           : <code className="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>;
                       },
                       pre: ({ children }) => (
-                        <pre className="bg-gray-800 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs font-mono mb-2 mt-1">
+                        <pre className="bg-gray-800 text-gray-100 rounded-lg p-3 overflow-x-auto text-xs font-mono mb-4 mt-1">
                           {children}
                         </pre>
                       ),
                       blockquote: ({ children }) => (
-                        <blockquote className="border-l-4 border-gray-300 pl-3 text-gray-500 italic mb-2">
+                        <blockquote className="border-l-4 border-gray-300 pl-3 text-gray-500 italic mb-4">
                           {children}
                         </blockquote>
                       ),
                       table: ({ children }) => (
-                        <div className="overflow-x-auto mb-2">
+                        <div className="overflow-x-auto mb-4">
                           <table className="border-collapse w-full text-xs">{children}</table>
                         </div>
                       ),
                       th: ({ children }) => <th className="border border-gray-200 bg-gray-50 px-2 py-1.5 text-left font-medium">{children}</th>,
                       td: ({ children }) => <td className="border border-gray-200 px-2 py-1.5">{children}</td>,
-                      hr: () => <hr className="border-gray-200 my-2" />,
+                      hr: () => <hr className="border-gray-200 my-4" />,
                     }}
                   >
                     {msg.content}
