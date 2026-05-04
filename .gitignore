@@ -29,3 +29,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# 벤치마크 실행 결과
+backend/benchmark_result.json
