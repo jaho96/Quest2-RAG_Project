@@ -1,36 +1,99 @@
 # RAG Chat
 
-문서를 업로드하고 AI와 대화할 수 있는 RAG(Retrieval-Augmented Generation) 기반 챗봇 시스템입니다.
+> 문서를 업로드하고 AI와 대화할 수 있는 RAG(Retrieval-Augmented Generation) 기반 챗봇 시스템
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL+pgvector-16-4169E1?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-required-2496ED?logo=docker&logoColor=white)
 
 ---
 
-## 주요 기능
+## 📌 주요 기능
 
-- **문서 업로드 및 임베딩** — PDF, DOCX, TXT, HWP 파일 다중 업로드 후 자동 청킹 및 벡터 임베딩
-- **문서 관리** — 파일 타입별 폴더 구조로 표시, 개별·전체 삭제 지원
-- **RAG 채팅** — 업로드된 문서를 기반으로 질문에 답변, 스트리밍 응답
-- **하이브리드 검색** — 벡터 유사도 검색과 키워드 검색(tsvector)을 RRF(Reciprocal Rank Fusion)로 결합
-- **쿼리 품질 향상** — 두 가지 전략을 병렬 실행해 검색 관련도 개선
-  - **쿼리 재작성(Query Rewriting)** : "~에 대해 알려줘" 같은 대화체를 핵심 키워드로 변환 (키워드 검색용)
-  - **HyDE(Hypothetical Document Embedding)** : 질문에 대한 가상 답변 단락을 생성해 임베딩 (벡터 검색용, 문서와 같은 문체·어휘 사용으로 코사인 유사도 향상)
-- **다중 LLM 지원** — Groq(무료), Google Gemini(무료), OpenAI GPT-4o, Claude 선택 가능
-- **메타 쿼리 처리** — "어떤 문서가 있나요?", "주제를 알려줘", "요약해줘" 등 문서 관련 질문 자동 처리
-- **예시 질문 카드** — 첫 질문을 돕는 클릭 가능한 예시 카드 제공
+### 📄 문서 관리
+- **다중 업로드** — PDF, DOCX, TXT, HWP 파일을 한 번에 여러 개 업로드
+- **파일 타입별 그룹화** — 사이드바에서 파일 유형별 폴더 구조로 표시
+- **개별·전체 삭제** — 문서 단위 삭제 및 전체 초기화 지원
+- **중복 방지** — 파일 해시 기반으로 동일 파일 재업로드 차단
+
+### 💬 RAG 채팅
+- **스트리밍 응답** — LLM 답변을 토큰 단위로 실시간 출력
+- **참고 출처 표시** — 답변에 사용된 청크 파일명·페이지·관련도 점수 표시
+- **메타 쿼리 처리** — "어떤 문서가 있나요?", "요약해줘" 등 문서 관련 질문 자동 처리
 - **대화 히스토리** — 대화 저장·불러오기, 참고 출처 복원, 새 채팅·전체 삭제
 - **대화 맥락 관리** — 토큰 기반 히스토리 트리밍으로 긴 대화도 맥락 유지
-- **응답 피드백** — 답변에 👍 / 👎 평가
 - **응답 캐시** — Redis를 통한 동일 질문 즉시 응답
-- **서버 상태 표시** — 사이드바에서 백엔드 연결 상태 실시간 확인
-- **자체 평가 대시보드** — LangSmith에서 영감을 받아 직접 구현한 모니터링 시스템
-  - 응답 품질: 질문마다 트레이스를 저장하고 응답시간·검색 관련도 추이 차트, 만족도 통계, 캐시 히트율 시각화 / 데이터 초기화 지원
-  - 임베딩 품질: 청크 크기 분포, 짧은 청크 비율 확인 (문서 유형별 권장 범위 안내)
-  - 업로드 성능: 파싱·청킹·임베딩·DB 저장 단계별 소요 시간 측정, 가로형 스택 바 차트(최근 15개)·상세 테이블(전체) 시각화, 호버 시 총계 표시 / 데이터 초기화 지원
+- **응답 피드백** — 답변에 👍 / 👎 평가
+- **예시 질문 카드** — 첫 질문을 돕는 클릭 가능한 예시 카드
+
+### 🔍 검색 품질
+- **하이브리드 검색** — 벡터 유사도 검색 + 키워드 검색(tsvector)을 RRF로 결합
+- **쿼리 재작성(Query Rewriting)** — "~에 대해 알려줘" 같은 대화체를 핵심 키워드로 변환하여 키워드 검색 정확도 향상
+- **HyDE(Hypothetical Document Embedding)** — 질문에 대한 가상 답변 단락을 생성해 임베딩, 문서와 유사한 문체·어휘로 코사인 유사도 향상
+- **병렬 실행** — 쿼리 재작성과 HyDE를 동시에 실행해 응답 지연 최소화
+
+### 📊 평가 & 모니터링
+- **자체 평가 대시보드** (3탭)
+  - **응답 품질** : 트레이스별 응답시간·검색 관련도 추이, 만족도 통계, 캐시 히트율 시각화
+  - **임베딩 품질** : 문서별 청크 크기 분포, 짧은 청크 비율 (문서 유형별 권장 범위 안내)
+  - **업로드 성능** : 파싱·청킹·임베딩·DB 저장 단계별 소요 시간, 가로형 스택 바 차트 + 상세 테이블
+- **RAG 디버깅** — Arize Phoenix를 통한 파이프라인 스팬 추적
+- **LangSmith 연동** — 트레이스 저장 및 품질 분석
+
+### 🎯 기타
+- **다중 LLM 지원** — 아래 표 참고
+- **서버 상태 표시** — 사이드바에서 백엔드 연결 상태 실시간 확인 (10초마다 갱신)
 - **퀴즈 생성** — 업로드된 문서 내용으로 단답형·객관식 퀴즈 자동 생성
-- **RAG 디버깅** — Arize Phoenix를 통한 파이프라인 스팬 추적 및 품질 분석
 
 ---
 
-## 기술 스택
+## 🤖 지원 LLM 모델
+
+| 제공사 | 모델 | 무료 여부 |
+|--------|------|:---------:|
+| Groq | Llama 3.3 70B Versatile | ✅ 무료 |
+| Groq | Llama 3.1 8B Instant | ✅ 무료 |
+| Google Gemini | Gemini 2.0 Flash | ✅ 무료 |
+| Google Gemini | Gemini 1.5 Flash | ✅ 무료 |
+| Google Gemini | Gemini 1.5 Pro | ✅ 무료 |
+| OpenAI | GPT-4o | 💳 유료 |
+| OpenAI | GPT-4o Mini | 💳 유료 |
+| Anthropic | Claude Sonnet 4.6 | 💳 유료 |
+| Anthropic | Claude Haiku 4.5 | 💳 유료 |
+
+---
+
+## 🏗️ RAG 파이프라인
+
+```
+사용자 질문 입력
+       │
+       ├─────────────────────────────────────────────┐
+       │ [병렬 실행]                                  │
+       ▼                                             ▼
+쿼리 재작성 (LLM)                           HyDE 생성 (LLM)
+"머신러닝 개념 원리"                  "머신러닝은 데이터로부터..."
+       │                                             │
+       ▼                                             ▼
+  키워드 검색 (tsvector)               임베딩 → 벡터 검색 (pgvector)
+       │                                             │
+       └──────────────── RRF 점수 합산 ──────────────┘
+                                │
+                           상위 K개 청크
+                                │
+                    시스템 프롬프트 + 맥락 구성
+                                │
+                          LLM 스트리밍 답변
+                                │
+                    트레이스 저장 / 캐시 저장
+```
+
+---
+
+## 🛠️ 기술 스택
 
 ### Backend
 | 항목 | 내용 |
@@ -38,7 +101,8 @@
 | 프레임워크 | FastAPI |
 | 벡터 DB | PostgreSQL + pgvector |
 | 연결 관리 | psycopg2 ThreadedConnectionPool |
-| 임베딩 | OpenAI text-embedding-3-small |
+| 임베딩 | OpenAI text-embedding-3-small (1536차원) |
+| 청킹 | 900자 / 오버랩 200자 (한국어 기술 문서 최적화) |
 | LLM | Groq / Google Gemini / OpenAI / Anthropic Claude |
 | 캐시 | Redis (선택) |
 | 문서 파싱 | PyMuPDF, python-docx, olefile |
@@ -54,23 +118,30 @@
 
 ---
 
-## 시작하기
+## 🚀 시작하기
 
 ### 사전 요구사항
 
-- Python 3.11+
-- Node.js 18+
-- Docker Desktop (PostgreSQL 컨테이너용)
-- Redis (캐시 기능 사용 시, 선택)
-- WSL2 (Windows 환경)
+| 항목 | 버전 | 필수 여부 |
+|------|------|:---------:|
+| Python | 3.11+ | ✅ 필수 |
+| Node.js | 18+ | ✅ 필수 |
+| Docker Desktop | 최신 | ✅ 필수 |
+| WSL2 | - | ✅ 필수 (Windows) |
+| Redis | - | 선택 |
 
-### 1. Docker Desktop 실행 후 PostgreSQL + pgvector 컨테이너 시작
+### 1. PostgreSQL + pgvector 컨테이너 시작
 
+최초 실행:
 ```bash
-docker run -d --name pgvector -e POSTGRES_PASSWORD=password -e POSTGRES_DB=ragdb -p 5432:5432 pgvector/pgvector:pg16
+docker run -d --name pgvector \
+  -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=ragdb \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
 ```
 
-이후 실행 시에는 Docker Desktop에서 컨테이너 시작 또는:
+이후 실행 시:
 ```bash
 docker start pgvector
 ```
@@ -94,28 +165,29 @@ pip install -r requirements.txt
 `.env` 파일 생성:
 
 ```env
+# 필수 (사용할 LLM에 해당하는 키만 있어도 됨)
 OPENAI_API_KEY=your_openai_key
 GROQ_API_KEY=your_groq_key
 GOOGLE_API_KEY=your_google_key
 ANTHROPIC_API_KEY=your_anthropic_key
 
+# 필수
 DATABASE_URL=postgresql://postgres:password@localhost:5432/ragdb
+
+# 선택
 REDIS_URL=redis://localhost:6379
-
-LANGSMITH_API_KEY=your_langsmith_key    # 선택
-LANGSMITH_PROJECT=rag-project           # 선택
-
-PHOENIX_PROJECT=rag-chat                # 선택 (기본값: rag-chat)
-PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces  # 선택
+LANGSMITH_API_KEY=your_langsmith_key
+LANGSMITH_PROJECT=rag-project
+PHOENIX_PROJECT=rag-chat
+PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
 ```
 
 백엔드 실행:
-
 ```bash
 fuser -k 8000/tcp; uvicorn main:app --reload
 ```
 
-### 4. Arize Phoenix 서버 실행 (선택, 별도 터미널)
+### 4. Arize Phoenix 실행 (선택, 별도 터미널)
 
 ```bash
 source venv/bin/activate
@@ -132,14 +204,15 @@ npm install
 fuser -k 5173/tcp; npm run dev
 ```
 
-브라우저에서 `http://localhost:5173` 접속  
-WSL 환경이면 Vite가 출력하는 Network URL(`172.x.x.x:5173`) 사용
+브라우저에서 `http://localhost:5173` 접속
 
-> **주의:** 서버 종료 시 반드시 **Ctrl+C** 사용. Ctrl+Z는 프로세스를 백그라운드로 보내 포트를 계속 점유한다.
+> **WSL 환경:** Vite가 출력하는 Network URL(`172.x.x.x:5173`) 사용
+
+> ⚠️ **주의:** 서버 종료 시 반드시 **Ctrl+C** 사용. Ctrl+Z는 프로세스를 백그라운드로 보내 포트를 계속 점유한다.
 
 ---
 
-## 프로젝트 구조
+## 📁 프로젝트 구조
 
 ```
 RAG_Project/
@@ -158,7 +231,7 @@ RAG_Project/
 │       ├── vector_store.py        # pgvector 청크 저장·하이브리드 검색(RRF, 불용어 필터)
 │       ├── query_rewriter.py      # 쿼리 재작성 + HyDE 병렬 실행
 │       ├── embedder.py            # OpenAI 임베딩 (캐시 연동)
-│       ├── document_parser.py     # PDF·DOCX·TXT·HWP 파싱
+│       ├── document_parser.py     # PDF·DOCX·TXT·HWP 파싱 및 청킹
 │       ├── conversation_store.py  # 대화·메시지 저장소 (sources 포함)
 │       ├── trace_store.py         # 트레이스 저장소
 │       ├── history_manager.py     # 대화 히스토리 토큰 관리·요약
@@ -194,52 +267,67 @@ RAG_Project/
 
 ---
 
-## API 엔드포인트
+## 🔌 API 엔드포인트
 
+### 문서
 | Method | Path | 설명 |
 |--------|------|------|
-| POST | `/documents/upload` | 문서 업로드 (성능 자동 기록) |
-| GET | `/documents/` | 문서 목록 |
-| DELETE | `/documents/` | 문서 전체 삭제 |
-| DELETE | `/documents/{id}` | 문서 개별 삭제 |
-| GET | `/chat/models` | 사용 가능한 모델 목록 |
-| POST | `/chat/stream` | RAG 채팅 (SSE 스트리밍) |
-| POST | `/chat/feedback` | 답변 피드백 |
-| GET | `/conversations/` | 대화 목록 |
-| POST | `/conversations/` | 대화 생성 |
-| GET | `/conversations/{id}/messages` | 메시지 불러오기 |
-| POST | `/conversations/{id}/messages` | 메시지 저장 (sources 포함) |
-| DELETE | `/conversations/{id}` | 대화 삭제 |
-| GET | `/evaluate/stats` | 응답 품질 통계 |
-| GET | `/evaluate/traces` | 트레이스 목록 |
-| DELETE | `/evaluate/traces` | 트레이스 전체 삭제 |
-| GET | `/evaluate/embedding-stats` | 임베딩 품질 통계 |
-| GET | `/evaluate/upload-traces` | 업로드 성능 기록 |
-| DELETE | `/evaluate/upload-traces` | 업로드 성능 기록 전체 삭제 |
-| POST | `/quiz/generate` | 퀴즈 생성 |
-| POST | `/quiz/grade` | 퀴즈 채점 |
+| `POST` | `/documents/upload` | 문서 업로드 (성능 자동 기록) |
+| `GET` | `/documents/` | 문서 목록 |
+| `DELETE` | `/documents/` | 문서 전체 삭제 |
+| `DELETE` | `/documents/{id}` | 문서 개별 삭제 |
+
+### 채팅
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/chat/models` | 사용 가능한 모델 목록 |
+| `POST` | `/chat/stream` | RAG 채팅 (SSE 스트리밍) |
+| `POST` | `/chat/feedback` | 답변 피드백 (👍 / 👎) |
+
+### 대화 히스토리
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/conversations/` | 대화 목록 |
+| `POST` | `/conversations/` | 대화 생성 |
+| `GET` | `/conversations/{id}/messages` | 메시지 불러오기 |
+| `POST` | `/conversations/{id}/messages` | 메시지 저장 |
+| `DELETE` | `/conversations/{id}` | 대화 삭제 |
+
+### 평가
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/evaluate/stats` | 응답 품질 통계 |
+| `GET` | `/evaluate/traces` | 트레이스 목록 |
+| `DELETE` | `/evaluate/traces` | 트레이스 전체 삭제 |
+| `GET` | `/evaluate/embedding-stats` | 임베딩 품질 통계 |
+| `GET` | `/evaluate/upload-traces` | 업로드 성능 기록 |
+| `DELETE` | `/evaluate/upload-traces` | 업로드 성능 기록 전체 삭제 |
+
+### 기타
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/health` | 서버 상태 확인 |
+| `POST` | `/quiz/generate` | 퀴즈 생성 |
+| `POST` | `/quiz/grade` | 퀴즈 채점 |
 
 ---
 
-## 서버 시작 방법
+## ▶️ 서버 시작 방법 (요약)
 
-1. **Docker Desktop 실행** (pgvector 컨테이너 시작)
-   ```bash
-   docker start pgvector
-   ```
-2. **백엔드 실행** (WSL 터미널 1)
-   ```bash
-   cd "/mnt/c/Users/.../backend"
-   source venv/bin/activate
-   fuser -k 8000/tcp; uvicorn main:app --reload
-   ```
-3. **Phoenix 실행** (WSL 터미널 2, 선택)
-   ```bash
-   source venv/bin/activate
-   python -m phoenix.server.main serve
-   ```
-4. **프론트엔드 실행** (WSL 터미널 3)
-   ```bash
-   cd "/mnt/c/Users/.../frontend"
-   fuser -k 5173/tcp; npm run dev
-   ```
+```bash
+# 1. PostgreSQL 컨테이너
+docker start pgvector
+
+# 2. 백엔드 (WSL 터미널 1)
+cd "/mnt/c/Users/.../backend"
+source venv/bin/activate
+fuser -k 8000/tcp; uvicorn main:app --reload
+
+# 3. Phoenix (WSL 터미널 2, 선택)
+source venv/bin/activate
+python -m phoenix.server.main serve
+
+# 4. 프론트엔드 (WSL 터미널 3)
+cd "/mnt/c/Users/.../frontend"
+fuser -k 5173/tcp; npm run dev
+```
